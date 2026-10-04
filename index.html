@@ -144,6 +144,33 @@ input[type=text],input[type=email],input[type=password],input[type=date],select,
 .gate .mark{font-family:Fraunces,Georgia,serif;font-weight:700;font-size:30px;line-height:1.15;margin-bottom:6px}
 .nudge{background:#FCF2E0;border:1px solid #EFD9AE;border-radius:var(--r);padding:14px;margin-top:14px}
 .hr{height:1px;background:var(--line);margin:22px 0}
+
+/* ---------- perbaikan tampilan HP ---------- */
+input,select,textarea{max-width:100%;min-width:0}
+input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-height:48px}
+.amount-wrap{min-width:0}
+.amount-wrap .rp{flex:0 0 auto}
+.seg button{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stat .v{font-size:19px;overflow-wrap:anywhere}
+@media (max-width:400px){
+  .wrap{padding-left:14px;padding-right:14px}
+  .hero{margin-left:-14px;margin-right:-14px;padding-left:14px;padding-right:14px}
+  .hero .total{font-size:36px}
+  #amt{font-size:28px}
+  .act{padding:15px 12px;font-size:15px}
+  .seg button{font-size:13px;padding:10px 2px}
+  .chip{font-size:13px;padding:8px 11px}
+  .stats{grid-template-columns:1fr 1fr;gap:8px}
+  .stat{padding:12px}
+  .stat .v{font-size:17px}
+}
+.searchbox{position:relative;margin-bottom:10px}
+.searchbox input{padding-left:38px}
+.searchbox::before{content:'';position:absolute;left:14px;top:50%;width:13px;height:13px;
+  margin-top:-9px;border:2px solid var(--muted);border-radius:50%;pointer-events:none}
+.searchbox::after{content:'';position:absolute;left:24px;top:50%;width:7px;height:2px;
+  margin-top:3px;background:var(--muted);transform:rotate(45deg);pointer-events:none}
+.chips.scroll{max-height:206px;overflow-y:auto;align-content:flex-start}
 </style>
 </head>
 <body>
@@ -153,7 +180,7 @@ input[type=text],input[type=email],input[type=password],input[type=date],select,
   <div class="center-screen"><div class="gate">
     <div class="mark">Catatan<br>Keuangan</div>
     <p class="muted tiny" style="margin:0 0 22px">Uang kita berdua, di satu tempat.</p>
-    <div class="field"><label for="em">Email</label><input id="em" type="email" autocomplete="email"></div>
+    <div class="field"><label for="em">Username</label><input id="em" type="text" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" placeholder="dany"></div>
     <div class="field"><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password"></div>
     <div style="margin-top:20px"><button class="btn" id="btn-login">Masuk</button></div>
     <div id="gate-err"></div>
@@ -228,8 +255,9 @@ input[type=text],input[type=email],input[type=password],input[type=date],select,
   </div>
 
   <div id="f-kategori" class="field" hidden>
-    <label>Kategori</label>
-    <div class="chips" id="kat-chips"></div>
+    <label for="kat-cari">Kategori</label>
+    <div class="searchbox"><input id="kat-cari" type="text" placeholder="Cari kategori…" autocomplete="off"></div>
+    <div class="chips scroll" id="kat-chips"></div>
   </div>
 
   <div id="f-sumber" class="field" hidden>
@@ -240,8 +268,8 @@ input[type=text],input[type=email],input[type=password],input[type=date],select,
   <div id="f-untuk" class="field" hidden>
     <label>Untuk siapa</label>
     <div class="seg" id="untuk-seg">
-      <button data-untuk="aku">Aku</button>
-      <button data-untuk="dia">Dia</button>
+      <button data-untuk="aku" id="u-aku">Dany</button>
+      <button data-untuk="dia" id="u-dia">Pho</button>
       <button data-untuk="bersama" aria-pressed="true">Bersama</button>
     </div>
   </div>
@@ -322,6 +350,12 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 const SUPABASE_URL = 'https://imipkakckrxzrqkdpitm.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_qJsqQD4ez4Avr1lfgapGPw_cSysDMYj';
 
+/* Nama kalian berdua. Dipakai di seluruh app, sama untuk siapa pun yang login. */
+const ORANG = { aku: 'Dany', dia: 'Pho', bersama: 'Bersama' };
+
+/* Login pakai username saja. Di balik layar diubah jadi username@moneytracker.local */
+const DOMAIN_LOGIN = '@moneytracker.local';
+
 const KATEGORI = [
   'Makan & Jajan','Belanja Dapur','Kebutuhan Rumah','Perawatan Diri','Kesehatan',
   'Kendaraan','Tagihan & Langganan','Cicilan','Perawatan Rumah','Perlengkapan Rumah',
@@ -337,11 +371,11 @@ const QUICK  = [
 const AKUN_AWAL = [
   {nama:'BRI',          jenis:'bank',   pemilik:'aku', urutan:1},
   {nama:'Mandiri',      jenis:'bank',   pemilik:'aku', urutan:2},
-  {nama:'Tunai aku',    jenis:'tunai',  pemilik:'aku', urutan:3},
-  {nama:'Mandiri suami',jenis:'bank',   pemilik:'dia', urutan:4},
-  {nama:'BNI suami',    jenis:'bank',   pemilik:'dia', urutan:5},
-  {nama:'Tunai suami',  jenis:'tunai',  pemilik:'dia', urutan:6},
-  {nama:'Kartu kredit', jenis:'kredit', pemilik:'aku', urutan:7}
+  {nama:'Tunai',        jenis:'tunai',  pemilik:'aku', urutan:3},
+  {nama:'Mandiri',      jenis:'bank',   pemilik:'dia', urutan:4},
+  {nama:'BNI',          jenis:'bank',   pemilik:'dia', urutan:5},
+  {nama:'Tunai',        jenis:'tunai',  pemilik:'dia', urutan:6},
+  {nama:'Kartu kredit', jenis:'kredit', pemilik:'bersama', urutan:7}
 ];
 const AKUN_KANTONG = 'BRI';   // kantong tabungan & investasi diambil dari saldo rekening ini
 const WARNA = ['#E8A33D','#2E7D6B','#9E4B35','#4A6FA5','#7C6AA8','#B08968','#5C8A72'];
@@ -358,6 +392,8 @@ let cursor = new Date();
 const rp = n => 'Rp ' + Math.round(Math.abs(n)).toLocaleString('id-ID');
 const rpS = n => (n < 0 ? '−' : '') + rp(n);
 const bulanID = d => d.toLocaleDateString('id-ID',{month:'long',year:'numeric'});
+const namaAkun = a => a ? `${a.nama} · ${ORANG[a.pemilik] || a.pemilik}` : '?';
+const cariAkun = (nm,pm) => AKUN.find(a=>a.nama===nm && a.pemilik===pm);
 const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 
 function show(id){ $$('.screen').forEach(s=>s.classList.remove('on')); $('#s-'+id).classList.add('on'); window.scrollTo(0,0); }
@@ -406,11 +442,11 @@ function renderHome(){
 
   $('#akun-list').innerHTML = AKUN.filter(a=>a.aktif).map(a=>{
     const s = saldoAkun(a.id);
-    return `<div class="row"><span class="nm">${a.nama}</span>
+    return `<div class="row"><span class="nm">${namaAkun(a)}</span>
             <span class="vl ${s<0?'neg':''}">${rpS(s)}</span></div>`;
   }).join('');
 
-  const bri = AKUN.find(a=>a.nama===AKUN_KANTONG);
+  const bri = cariAkun(AKUN_KANTONG,'aku');
   const tab = kantongSaldo('tabungan'), inv = kantongSaldo('investasi');
   const bebas = (bri ? saldoAkun(bri.id) : 0) - tab - inv;
   $('#kantong-list').innerHTML = `
@@ -430,8 +466,7 @@ function barisTrx(t){
   if(t.jenis==='masuk'){ nama = t.sumber || 'Pemasukan'; tanda='+'; cls='pos'; }
   else if(t.jenis==='keluar'){ nama = t.kategori || 'Pengeluaran'; tanda='−'; cls='neg'; }
   else if(t.jenis==='pindah'){
-    const a = AKUN.find(x=>x.id===t.akun_id), b = AKUN.find(x=>x.id===t.tujuan_id);
-    nama = `${a?a.nama:'?'} → ${b?b.nama:'?'}`;
+    nama = `${namaAkun(AKUN.find(x=>x.id===t.akun_id))} → ${namaAkun(AKUN.find(x=>x.id===t.tujuan_id))}`;
   } else {
     nama = (t.arah===-1?'Tarik dari ':'Sisihkan ke ') + t.kantong;
   }
@@ -463,16 +498,13 @@ function bukaForm(jenis){
   $$('#kantong-seg button').forEach(b=>b.setAttribute('aria-pressed','false'));
   $$('#kat-chips .chip, #sum-chips .chip, #quick-chips .chip').forEach(c=>c.setAttribute('aria-pressed','false'));
 
-  const opsi = AKUN.filter(a=>a.aktif).map(a=>`<option value="${a.id}">${a.nama}</option>`).join('');
+  const opsi = AKUN.filter(a=>a.aktif).map(a=>`<option value="${a.id}">${namaAkun(a)}</option>`).join('');
   $('#sel-akun').innerHTML = opsi;
   $('#sel-tujuan').innerHTML = opsi;
-  const mandiri = AKUN.find(a=>a.nama==='Mandiri');
-  if(mandiri && jenis!=='pindah') $('#sel-akun').value = mandiri.id;
-  if(jenis==='pindah'){
-    const bri = AKUN.find(a=>a.nama===AKUN_KANTONG);
-    if(mandiri) $('#sel-akun').value = mandiri.id;
-    if(bri) $('#sel-tujuan').value = bri.id;
-  }
+  const mandiri = cariAkun('Mandiri','aku'), bri = cariAkun(AKUN_KANTONG,'aku');
+  if(mandiri) $('#sel-akun').value = mandiri.id;
+  if(jenis==='pindah' && bri) $('#sel-tujuan').value = bri.id;
+  $('#kat-cari').value = ''; filterKategori('');
   show('form');
   setTimeout(()=>$('#amt').focus(),120);
 }
@@ -495,9 +527,28 @@ function chips(host, items, onPick){
   };
 }
 chips('#kat-chips', KATEGORI, v=>{ form.kategori=v; });
+
+function filterKategori(q){
+  const s = q.trim().toLowerCase();
+  let tampil = 0;
+  $$('#kat-chips .chip').forEach(c=>{
+    const cocok = !s || c.dataset.v.toLowerCase().includes(s);
+    c.style.display = cocok ? '' : 'none';
+    if(cocok) tampil++;
+  });
+  const kosong = $('#kat-kosong');
+  if(!tampil && !kosong){
+    const d = document.createElement('div');
+    d.id = 'kat-kosong'; d.className = 'empty'; d.style.padding = '14px';
+    d.textContent = 'Tidak ada kategori yang cocok.';
+    $('#kat-chips').after(d);
+  } else if(tampil && kosong){ kosong.remove(); }
+}
+$('#kat-cari').addEventListener('input', e=>filterKategori(e.target.value));
 chips('#sum-chips', SUMBER,   v=>{ form.sumber=v; });
 chips('#quick-chips', QUICK.map(q=>[q[0],q[1]]), (v,c)=>{
   form.kategori = v;
+  $('#kat-cari').value = ''; filterKategori('');
   $$('#kat-chips .chip').forEach(o=>o.setAttribute('aria-pressed', o.dataset.v===v));
   if(!$('#note').value) $('#note').value = c.textContent;
 });
@@ -588,7 +639,7 @@ function renderMonitor(){
 
   const u = {aku:0,dia:0,bersama:0};
   rows.filter(t=>t.jenis==='keluar').forEach(t=>{ u[t.untuk||'bersama'] += Number(t.jumlah); });
-  const labelU = {aku:'Aku',dia:'Dia',bersama:'Bersama'};
+  const labelU = {aku:ORANG.aku, dia:ORANG.dia, bersama:'Bersama'};
   $('#untuk-list').innerHTML = keluar
     ? Object.entries(u).sort((a,b)=>b[1]-a[1]).map(([k,v])=>
         `<div class="row"><span class="nm">${labelU[k]}</span><span class="vl">${rp(v)} <span class="muted tiny">${Math.round(v/keluar*100)}%</span></span></div>`).join('')
@@ -648,7 +699,7 @@ document.addEventListener('click', e=>{
 function renderSetup(){
   $('#setup-list').innerHTML = AKUN_AWAL.map((a,i)=>`
     <div class="field">
-      <label for="sa${i}">${a.nama}${a.jenis==='kredit'?' <span class="muted">— isi sisa tagihan, kosongkan kalau tidak punya</span>':''}</label>
+      <label for="sa${i}">${a.nama} · ${ORANG[a.pemilik]}${a.jenis==='kredit'?' <span class="muted">— isi sisa tagihan, kosongkan kalau tidak punya</span>':''}</label>
       <div class="amount-wrap" style="padding:11px 14px">
         <span class="rp" style="font-size:15px">Rp</span>
         <input id="sa${i}" type="text" inputmode="numeric" placeholder="0"
@@ -677,8 +728,11 @@ $('#btn-setup').onclick = async ()=>{
 /* ---------- login ---------- */
 $('#btn-login').onclick = async ()=>{
   err('#gate-err','');
-  const {error} = await sb.auth.signInWithPassword({email:$('#em').value.trim(), password:$('#pw').value});
-  if(error) err('#gate-err','Email atau password tidak cocok.');
+  let u = $('#em').value.trim().toLowerCase();
+  if(!u) return err('#gate-err','Isi username dulu.');
+  if(!u.includes('@')) u += DOMAIN_LOGIN;
+  const {error} = await sb.auth.signInWithPassword({email:u, password:$('#pw').value});
+  if(error) err('#gate-err','Username atau password tidak cocok.');
 };
 $('#pw').addEventListener('keydown', e=>{ if(e.key==='Enter') $('#btn-login').click(); });
 $('#btn-out').onclick = async ()=>{ await sb.auth.signOut(); location.reload(); };
@@ -688,7 +742,8 @@ sb.auth.onAuthStateChange(async (_e, session)=>{
   if(!session){ show('gate'); return; }
   ME = session.user;
   const {data:p} = await sb.from('profiles').select('nama').eq('id',ME.id).maybeSingle();
-  NAMA = p?.nama || '';
+  const un = (ME.email||'').split('@')[0];
+  NAMA = p?.nama || (un ? un.charAt(0).toUpperCase()+un.slice(1) : '');
   if(!await muat()) return;
   if(!AKUN.length){ renderSetup(); show('setup'); return; }
   renderHome(); show('home');
