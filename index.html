@@ -171,6 +171,13 @@ input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-heigh
 .searchbox::after{content:'';position:absolute;left:24px;top:50%;width:7px;height:2px;
   margin-top:3px;background:var(--muted);transform:rotate(45deg);pointer-events:none}
 .chips.scroll{max-height:206px;overflow-y:auto;align-content:flex-start}
+.chip.tambah{border-style:dashed;border-color:var(--marigold);color:#A06A12;font-weight:600}
+.kelola-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #F0F0EA}
+.kelola-row:last-child{border-bottom:0}
+.kelola-row .nm{flex:1;font-size:14px;min-width:0}
+.kelola-row.off .nm{color:var(--muted);text-decoration:line-through}
+.kelola-row button{font:inherit;font-size:13px;padding:7px 12px;border-radius:9px;
+  border:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -237,6 +244,9 @@ input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-heigh
       <h3>Terakhir dicatat</h3>
       <div id="recent"></div>
     </div>
+
+    <div style="margin-top:14px"><button class="btn ghost" style="font-size:14px;padding:12px"
+      data-go="kelola">Kelola kategori</button></div>
   </div>
 </section>
 
@@ -337,6 +347,26 @@ input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-heigh
   </div>
 </div></section>
 
+<!-- ======================= KELOLA KATEGORI ======================= -->
+<section id="s-kelola" class="screen"><div class="wrap">
+  <div class="topbar"><button class="back" data-go="home">← Kembali</button><h2>Kelola kategori</h2></div>
+  <p class="muted tiny">Kategori yang disembunyikan tidak muncul lagi saat input, tapi catatan lama tetap utuh.</p>
+
+  <div class="card">
+    <h3>Pengeluaran</h3>
+    <div id="kel-keluar"></div>
+    <div style="margin-top:14px"><button class="btn ghost" style="font-size:14px;padding:11px"
+      data-tambah-kat="keluar">+ Tambah kategori</button></div>
+  </div>
+
+  <div class="card">
+    <h3>Sumber pemasukan</h3>
+    <div id="kel-masuk"></div>
+    <div style="margin-top:14px"><button class="btn ghost" style="font-size:14px;padding:11px"
+      data-tambah-kat="masuk">+ Tambah sumber</button></div>
+  </div>
+</div></section>
+
 <div class="toast" id="toast"></div>
 
 <script type="module">
@@ -356,13 +386,10 @@ const ORANG = { aku: 'Dany', dia: 'Pho', bersama: 'Bersama' };
 /* Login pakai username saja. Di balik layar diubah jadi username@moneytracker.local */
 const DOMAIN_LOGIN = '@moneytracker.local';
 
-const KATEGORI = [
-  'Makan & Jajan','Belanja Dapur','Kebutuhan Rumah','Perawatan Diri','Kesehatan',
-  'Kendaraan','Tagihan & Langganan','Cicilan','Perawatan Rumah','Perlengkapan Rumah',
-  'Fashion','Hewan Peliharaan','Upacara & Adat','Sosial','Keluarga','Hiburan',
-  'Tanaman & Kebun', 'Ciggarettes', 'Listrik', 'Pakaian', 'Olahraga', 'Lain-lain'
-];
-const SUMBER = ['Gaji Dany','Gaji Popo','Service charge','Dari Mamak','Bonus Popo','Lainnya'];
+/* Kategori sekarang disimpan di database — diatur lewat tombol Kelola di app,
+   bukan lagi dari file ini. */
+let KAT = [];                                        // semua baris categories
+const aktifKat = j => KAT.filter(k=>k.jenis===j && k.aktif).map(k=>k.nama);
 const QUICK  = [
   ['Jajan kopi','Makan & Jajan'],['Makan siang','Makan & Jajan'],
   ['Bensin motor','Kendaraan'],['Bensin mobil','Kendaraan'],
@@ -421,12 +448,15 @@ const kantongSaldo = k => TRX.filter(t=>t.jenis==='alokasi'&&t.kantong===k)
 
 /* ---------- muat data ---------- */
 async function muat(){
-  const [a,t] = await Promise.all([
+  const [a,t,k] = await Promise.all([
     sb.from('accounts').select('*').order('urutan'),
-    sb.from('transactions').select('*').order('tanggal',{ascending:false}).order('id',{ascending:false})
+    sb.from('transactions').select('*').order('tanggal',{ascending:false}).order('id',{ascending:false}),
+    sb.from('categories').select('*').order('jenis').order('urutan').order('nama')
   ]);
   if(a.error||t.error){ toast('Gagal memuat data'); return false; }
-  AKUN = a.data || []; TRX = t.data || [];
+  if(k.error){ toast('Tabel kategori belum dibuat — jalankan kategori-v3.sql'); }
+  AKUN = a.data || []; TRX = t.data || []; KAT = k.data || [];
+  bangunChips();
   return true;
 }
 
@@ -515,23 +545,55 @@ $('#amt').addEventListener('input', e=>{
 });
 const nilai = () => Number(($('#amt').value||'').replace(/\D/g,''));
 
-function chips(host, items, onPick){
+function chips(host, items, onPick, tambahJenis){
   $(host).innerHTML = items.map(x=>{
     const [label,val] = Array.isArray(x) ? x : [x,x];
     return `<button class="chip" type="button" data-v="${val}" aria-pressed="false">${label}</button>`;
-  }).join('');
+  }).join('') + (tambahJenis
+    ? `<button class="chip tambah" type="button" data-tambah="${tambahJenis}">+ Baru</button>` : '');
   $(host).onclick = e=>{
+    const plus = e.target.closest('[data-tambah]');
+    if(plus){ tambahKategori(plus.dataset.tambah); return; }
     const c = e.target.closest('.chip'); if(!c) return;
-    $$(host+' .chip').forEach(o=>o.setAttribute('aria-pressed', o===c));
+    $$(host+' .chip:not(.tambah)').forEach(o=>o.setAttribute('aria-pressed', o===c));
     onPick(c.dataset.v, c);
   };
 }
-chips('#kat-chips', KATEGORI, v=>{ form.kategori=v; });
+function bangunChips(){
+  chips('#kat-chips', aktifKat('keluar'), v=>{ form.kategori=v; }, 'keluar');
+  chips('#sum-chips', aktifKat('masuk'),  v=>{ form.sumber=v;   }, 'masuk');
+}
+
+/* Tambah kategori baru dari dalam app */
+async function tambahKategori(jenis){
+  const label = jenis==='keluar' ? 'kategori pengeluaran' : 'sumber pemasukan';
+  const nama = (prompt(`Nama ${label} baru:`) || '').trim();
+  if(!nama) return;
+  if(KAT.some(k=>k.jenis===jenis && k.nama.toLowerCase()===nama.toLowerCase()))
+    return toast('Sudah ada yang namanya itu');
+
+  const {error} = await sb.from('categories').insert({jenis, nama, urutan:50});
+  if(error) return toast('Gagal menambah: '+error.message);
+
+  const simpan = {kategori:form.kategori, sumber:form.sumber};
+  await muat();
+  if(jenis==='keluar'){
+    form.kategori = nama;
+    $$('#kat-chips .chip').forEach(c=>c.setAttribute('aria-pressed', c.dataset.v===nama));
+    if($('#kat-cari')){ $('#kat-cari').value=''; filterKategori(''); }
+  } else {
+    form.sumber = nama;
+    $$('#sum-chips .chip').forEach(c=>c.setAttribute('aria-pressed', c.dataset.v===nama));
+  }
+  if(jenis!=='keluar') form.kategori = simpan.kategori;
+  toast(`"${nama}" ditambahkan`);
+}
 
 function filterKategori(q){
   const s = q.trim().toLowerCase();
   let tampil = 0;
   $$('#kat-chips .chip').forEach(c=>{
+    if(c.classList.contains('tambah')){ c.style.display=''; return; }
     const cocok = !s || c.dataset.v.toLowerCase().includes(s);
     c.style.display = cocok ? '' : 'none';
     if(cocok) tampil++;
@@ -545,7 +607,6 @@ function filterKategori(q){
   } else if(tampil && kosong){ kosong.remove(); }
 }
 $('#kat-cari').addEventListener('input', e=>filterKategori(e.target.value));
-chips('#sum-chips', SUMBER,   v=>{ form.sumber=v; });
 chips('#quick-chips', QUICK.map(q=>[q[0],q[1]]), (v,c)=>{
   form.kategori = v;
   $('#kat-cari').value = ''; filterKategori('');
@@ -682,12 +743,43 @@ $('#btn-detail').onclick = ()=>{
   $('#btn-detail').textContent = el.hidden ? 'Lihat semua kategori' : 'Tutup detail';
 };
 
+/* ---------- kelola kategori ---------- */
+function renderKelola(){
+  const baris = j => {
+    const list = KAT.filter(k=>k.jenis===j);
+    if(!list.length) return `<div class="empty">Belum ada.</div>`;
+    return list.map(k=>`
+      <div class="kelola-row ${k.aktif?'':'off'}">
+        <span class="nm">${k.nama}</span>
+        <button data-kat-id="${k.id}" data-kat-aktif="${k.aktif?'1':'0'}">
+          ${k.aktif?'Sembunyikan':'Tampilkan'}</button>
+      </div>`).join('');
+  };
+  $('#kel-keluar').innerHTML = baris('keluar');
+  $('#kel-masuk').innerHTML  = baris('masuk');
+}
+
+document.addEventListener('click', async e=>{
+  const t = e.target.closest('[data-kat-id]');
+  if(t){
+    const jadi = t.dataset.katAktif !== '1';
+    t.disabled = true;
+    const {error} = await sb.from('categories').update({aktif:jadi}).eq('id', Number(t.dataset.katId));
+    if(error){ t.disabled=false; return toast('Gagal: '+error.message); }
+    await muat(); renderKelola();
+    return;
+  }
+  const tb = e.target.closest('[data-tambah-kat]');
+  if(tb){ await tambahKategori(tb.dataset.tambahKat); renderKelola(); }
+});
+
 /* ---------- navigasi ---------- */
 document.addEventListener('click', e=>{
   const b = e.target.closest('[data-go]'); if(b){
     const g = b.dataset.go;
     if(g==='home'){ show('home'); renderHome(); }
     else if(g==='monitor'){ cursor = new Date(); show('monitor'); renderMonitor(); }
+    else if(g==='kelola'){ renderKelola(); show('kelola'); }
     else bukaForm(g);
   }
   const p = e.target.closest('[data-pocket]');
