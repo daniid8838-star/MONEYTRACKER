@@ -172,6 +172,20 @@ input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-heigh
   margin-top:3px;background:var(--muted);transform:rotate(45deg);pointer-events:none}
 .chips.scroll{max-height:206px;overflow-y:auto;align-content:flex-start}
 .chip.tambah{border-style:dashed;border-color:var(--marigold);color:#A06A12;font-weight:600}
+.total-btn{background:none;border:0;padding:0;margin:0;cursor:pointer;display:block;text-align:left;
+  font:inherit;color:inherit;-webkit-tap-highlight-color:transparent}
+.total-btn .total.samar{color:#556B62;letter-spacing:.06em}
+.row[data-trx]{cursor:pointer;margin:0 -8px;padding-left:8px;padding-right:8px;border-radius:9px}
+.row[data-trx]:active{background:#F4F4EE}
+.row[data-trx] .nm::after{content:' ›';color:#C2C2B6}
+.btn.hapus{background:#fff;color:var(--clay);border:1px solid #E6C3BA}
+.ab{padding:11px 0;border-bottom:1px solid #F0F0EA}
+.ab:last-child{border-bottom:0;padding-bottom:0}
+.ab .top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.ab .nama{font-size:14px;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ab .net{font-size:14px;font-weight:600;white-space:nowrap}
+.ab .flow{display:flex;gap:14px;margin-top:3px;font-size:13px}
+.ab .flow span{white-space:nowrap}
 .kelola-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #F0F0EA}
 .kelola-row:last-child{border-bottom:0}
 .kelola-row .nm{flex:1;font-size:14px;min-width:0}
@@ -215,7 +229,9 @@ input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-heigh
         <button class="linkish" id="btn-out">Keluar</button>
       </div>
       <div class="label">Sisa uang keseluruhan</div>
-      <div class="total num" id="total">—</div>
+      <button class="total-btn" id="total-btn" aria-label="Tampilkan atau sembunyikan nominal">
+        <span class="total num" id="total">—</span>
+      </button>
       <div class="sub" id="total-sub"></div>
     </div>
 
@@ -306,6 +322,9 @@ input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-heigh
   <div class="field"><label for="note">Catatan <span class="muted">— opsional</span></label><input id="note" type="text" placeholder="misalnya: beli canang di pasar"></div>
 
   <div id="form-err"></div>
+  <div id="f-hapus" class="field" hidden>
+    <button class="btn hapus" id="btn-hapus">Hapus catatan ini</button>
+  </div>
   <div class="sticky-save"><div class="inner"><button class="btn" id="btn-save">Simpan</button></div></div>
 </div></section>
 
@@ -342,8 +361,15 @@ input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-heigh
   </div>
 
   <div class="card">
+    <h3>Per rekening</h3>
+    <div id="akun-bulan"></div>
+    <p class="muted tiny" style="margin:12px 0 0">Sudah termasuk pindah antar rekening.</p>
+  </div>
+
+  <div class="card">
     <h3>Semua transaksi bulan ini</h3>
-    <div id="trx-list"></div>
+    <button class="btn ghost" id="btn-trx" style="font-size:14px;padding:11px">Lihat daftar transaksi</button>
+    <div id="trx-list" hidden style="margin-top:6px"></div>
   </div>
 </div></section>
 
@@ -414,6 +440,9 @@ const $$ = s => [...document.querySelectorAll(s)];
 let AKUN = [], TRX = [], ME = null, NAMA = '';
 let form = {jenis:'keluar', kategori:null, sumber:null, untuk:'bersama', kantong:null, arah:1};
 let cursor = new Date();
+let editId = null;
+let sembunyi = true;
+try { sembunyi = localStorage.getItem('tampilkanTotal') !== '1'; } catch(e){}
 
 /* ---------- util ---------- */
 const rp = n => 'Rp ' + Math.round(Math.abs(n)).toLocaleString('id-ID');
@@ -463,7 +492,9 @@ async function muat(){
 /* ---------- render home ---------- */
 function renderHome(){
   $('#hi').textContent = NAMA ? `Halo, ${NAMA}` : '';
-  $('#total').textContent = rpS(totalUang());
+  const el = $('#total');
+  el.textContent = sembunyi ? 'Rp ••••••' : rpS(totalUang());
+  el.classList.toggle('samar', sembunyi);
 
   const utang = AKUN.filter(a=>a.jenis==='kredit').reduce((s,a)=>s+saldoAkun(a.id),0);
   $('#total-sub').textContent = utang < 0
@@ -502,18 +533,20 @@ function barisTrx(t){
   }
   const tgl = new Date(t.tanggal+'T00:00').toLocaleDateString('id-ID',{day:'numeric',month:'short'});
   const ket = t.catatan ? ` · ${t.catatan}` : '';
-  return `<div class="row"><span class="nm">${nama}<br><span class="muted tiny">${tgl}${ket}</span></span>
+  return `<div class="row" data-trx="${t.id}"><span class="nm">${nama}<br><span class="muted tiny">${tgl}${ket}</span></span>
           <span class="vl ${cls}">${tanda}${rp(j)}</span></div>`;
 }
 
 /* ---------- form ---------- */
-function bukaForm(jenis){
+function bukaForm(jenis, t){
+  editId = t ? t.id : null;
   form = {jenis, kategori:null, sumber:null, untuk:'bersama', kantong:null, arah:1};
   $('#amt').value=''; $('#note').value=''; $('#tgl').value = iso(new Date());
   err('#form-err','');
-  $('#form-title').textContent =
-    jenis==='masuk' ? 'Pemasukan' : jenis==='keluar' ? 'Pengeluaran' :
-    jenis==='pindah' ? 'Pindah uang' : 'Sisihkan uang';
+  $('#f-hapus').hidden = !t;
+  const judul = jenis==='masuk' ? 'Pemasukan' : jenis==='keluar' ? 'Pengeluaran' :
+                jenis==='pindah' ? 'Pindah uang' : 'Sisihkan uang';
+  $('#form-title').textContent = t ? 'Ubah ' + judul.toLowerCase() : judul;
 
   $('#f-quick').hidden    = jenis!=='keluar';
   $('#f-kategori').hidden = jenis!=='keluar';
@@ -535,8 +568,23 @@ function bukaForm(jenis){
   if(mandiri) $('#sel-akun').value = mandiri.id;
   if(jenis==='pindah' && bri) $('#sel-tujuan').value = bri.id;
   $('#kat-cari').value = ''; filterKategori('');
+
+  if(t){
+    $('#amt').value = Number(t.jumlah).toLocaleString('id-ID');
+    $('#tgl').value = t.tanggal;
+    $('#note').value = t.catatan || '';
+    form.kategori = t.kategori; form.sumber = t.sumber;
+    form.untuk = t.untuk || 'bersama'; form.kantong = t.kantong; form.arah = t.arah || 1;
+    $$('#kat-chips .chip:not(.tambah)').forEach(c=>c.setAttribute('aria-pressed', c.dataset.v===t.kategori));
+    $$('#sum-chips .chip:not(.tambah)').forEach(c=>c.setAttribute('aria-pressed', c.dataset.v===t.sumber));
+    $$('#untuk-seg button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.untuk===form.untuk));
+    $$('#kantong-seg button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.kantong===t.kantong));
+    if(t.akun_id)   $('#sel-akun').value = t.akun_id;
+    if(t.tujuan_id) $('#sel-tujuan').value = t.tujuan_id;
+  }
+
   show('form');
-  setTimeout(()=>$('#amt').focus(),120);
+  if(!t) setTimeout(()=>$('#amt').focus(),120);
 }
 
 $('#amt').addEventListener('input', e=>{
@@ -641,13 +689,17 @@ $('#btn-save').onclick = async ()=>{
   };
 
   $('#btn-save').disabled = true; $('#btn-save').textContent = 'Menyimpan…';
-  const {error} = await sb.from('transactions').insert(row);
+  const {error} = editId
+    ? await sb.from('transactions').update(row).eq('id', editId)
+    : await sb.from('transactions').insert(row);
   $('#btn-save').disabled = false; $('#btn-save').textContent = 'Simpan';
   if(error) return err('#form-err','Gagal menyimpan: '+error.message);
 
-  await muat(); renderHome();
-  if(form.jenis==='masuk'){ show('home'); tawarkanInvestasi(j); }
-  else { show('home'); toast('Tersimpan'); }
+  const tadiEdit = editId; editId = null;
+  await muat(); renderHome(); show('home');
+  if(tadiEdit) toast('Perubahan tersimpan');
+  else if(form.jenis==='masuk') tawarkanInvestasi(j);
+  else toast('Tersimpan');
 };
 
 /* 20% investasi — ditawarkan, bukan dipotong otomatis */
@@ -706,9 +758,36 @@ function renderMonitor(){
         `<div class="row"><span class="nm">${labelU[k]}</span><span class="vl">${rp(v)} <span class="muted tiny">${Math.round(v/keluar*100)}%</span></span></div>`).join('')
     : `<div class="empty">Belum ada pengeluaran bulan ini.</div>`;
 
+  const flow = {};
+  AKUN.forEach(a=>flow[a.id] = {masuk:0, keluar:0});
+  rows.forEach(t=>{
+    const j = Number(t.jumlah);
+    if(t.jenis==='masuk'  && flow[t.akun_id]) flow[t.akun_id].masuk  += j;
+    if(t.jenis==='keluar' && flow[t.akun_id]) flow[t.akun_id].keluar += j;
+    if(t.jenis==='pindah'){
+      if(flow[t.akun_id])   flow[t.akun_id].keluar  += j;
+      if(flow[t.tujuan_id]) flow[t.tujuan_id].masuk += j;
+    }
+  });
+  const pakai = AKUN.filter(a=>a.aktif && (flow[a.id].masuk || flow[a.id].keluar));
+  $('#akun-bulan').innerHTML = pakai.length
+    ? pakai.map(a=>{
+        const f = flow[a.id], net = f.masuk - f.keluar;
+        return `<div class="ab">
+          <div class="top"><span class="nama">${namaAkun(a)}</span>
+            <span class="net ${net<0?'neg':net>0?'pos':'muted'}">${net===0?'—':rpS(net)}</span></div>
+          <div class="flow">
+            <span class="pos">↓ ${rp(f.masuk)}</span>
+            <span class="neg">↑ ${rp(f.keluar)}</span>
+          </div></div>`;
+      }).join('')
+    : `<div class="empty">Belum ada pergerakan bulan ini.</div>`;
+
   $('#trx-list').innerHTML = rows.length
     ? rows.map(barisTrx).join('')
     : `<div class="empty">Bulan ini masih kosong.</div>`;
+  $('#trx-list').hidden = true;
+  $('#btn-trx').textContent = `Lihat daftar transaksi (${rows.length})`;
 }
 
 function donut(top, total){
@@ -738,9 +817,40 @@ function donut(top, total){
 
 $('#m-prev').onclick = ()=>{ cursor.setMonth(cursor.getMonth()-1); renderMonitor(); };
 $('#m-next').onclick = ()=>{ cursor.setMonth(cursor.getMonth()+1); renderMonitor(); };
+$('#btn-trx').onclick = ()=>{
+  const el = $('#trx-list'); el.hidden = !el.hidden;
+  const n = bulanTrx().length;
+  $('#btn-trx').textContent = el.hidden ? `Lihat daftar transaksi (${n})` : 'Tutup daftar';
+};
 $('#btn-detail').onclick = ()=>{
   const el = $('#kat-all'); el.hidden = !el.hidden;
   $('#btn-detail').textContent = el.hidden ? 'Lihat semua kategori' : 'Tutup detail';
+};
+
+/* ---------- hapus catatan ---------- */
+$('#btn-hapus').onclick = async ()=>{
+  if(!editId) return;
+  if(!confirm('Hapus catatan ini? Tidak bisa dibatalkan.')) return;
+  $('#btn-hapus').disabled = true;
+  const {error} = await sb.from('transactions').delete().eq('id', editId);
+  $('#btn-hapus').disabled = false;
+  if(error) return err('#form-err','Gagal menghapus: '+error.message);
+  editId = null;
+  await muat(); renderHome(); show('home'); toast('Catatan dihapus');
+};
+
+/* ---------- buka catatan untuk diubah ---------- */
+document.addEventListener('click', e=>{
+  const r = e.target.closest('[data-trx]'); if(!r) return;
+  const t = TRX.find(x=>String(x.id)===r.dataset.trx);
+  if(t) bukaForm(t.jenis, t);
+});
+
+/* ---------- tampilkan atau sembunyikan nominal ---------- */
+$('#total-btn').onclick = ()=>{
+  sembunyi = !sembunyi;
+  try { localStorage.setItem('tampilkanTotal', sembunyi ? '0' : '1'); } catch(e){}
+  renderHome();
 };
 
 /* ---------- kelola kategori ---------- */
