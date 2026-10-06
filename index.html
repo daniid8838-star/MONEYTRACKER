@@ -186,6 +186,7 @@ input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-heigh
 .ab .net{font-size:14px;font-weight:600;white-space:nowrap}
 .ab .flow{display:flex;gap:14px;margin-top:3px;font-size:13px}
 .ab .flow span{white-space:nowrap}
+.linkish.dark{color:var(--muted);margin-top:9px;display:inline-block}
 .kelola-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #F0F0EA}
 .kelola-row:last-child{border-bottom:0}
 .kelola-row .nm{flex:1;font-size:14px;min-width:0}
@@ -303,6 +304,7 @@ input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-heigh
   <div id="f-akun" class="field" hidden>
     <label id="lbl-akun">Rekening</label>
     <select id="sel-akun"></select>
+    <button class="linkish dark" id="btn-semua-akun" type="button"></button>
   </div>
 
   <div id="f-tujuan" class="field" hidden>
@@ -409,6 +411,10 @@ const SUPABASE_KEY = 'sb_publishable_qJsqQD4ez4Avr1lfgapGPw_cSysDMYj';
 /* Nama kalian berdua. Dipakai di seluruh app, sama untuk siapa pun yang login. */
 const ORANG = { aku: 'Dany', dia: 'Pho', bersama: 'Bersama' };
 
+/* Username mana milik siapa. Dipakai supaya tiap orang hanya melihat
+   rekeningnya sendiri (plus yang bersama) saat input. */
+const PEMILIK_LOGIN = { dany: 'aku', pho: 'dia' };
+
 /* Login pakai username saja. Di balik layar diubah jadi username@moneytracker.local */
 const DOMAIN_LOGIN = '@moneytracker.local';
 
@@ -441,6 +447,8 @@ let AKUN = [], TRX = [], ME = null, NAMA = '';
 let form = {jenis:'keluar', kategori:null, sumber:null, untuk:'bersama', kantong:null, arah:1};
 let cursor = new Date();
 let editId = null;
+let SAYA = 'aku';          // pemilik rekening untuk user yang sedang login
+let semuaAkun = false;     // true kalau user minta lihat rekening pasangannya juga
 let sembunyi = true;
 try { sembunyi = localStorage.getItem('tampilkanTotal') !== '1'; } catch(e){}
 
@@ -538,6 +546,22 @@ function barisTrx(t){
 }
 
 /* ---------- form ---------- */
+/* Rekening sendiri + yang dimiliki bersama. Rekening pasangan hanya muncul
+   kalau user menekan "Tampilkan rekening Pho/Dany juga". */
+function isiAkun(){
+  const punyaku = AKUN.filter(a=>a.aktif && (semuaAkun || a.pemilik===SAYA || a.pemilik==='bersama'));
+  const semua   = AKUN.filter(a=>a.aktif);
+  const opt = list => list.map(a=>`<option value="${a.id}">${namaAkun(a)}</option>`).join('');
+  const lama = $('#sel-akun').value;
+  $('#sel-akun').innerHTML   = opt(punyaku);
+  $('#sel-tujuan').innerHTML = opt(semua);          // pindah tetap boleh ke rekening pasangan
+  if(lama && punyaku.some(a=>String(a.id)===lama)) $('#sel-akun').value = lama;
+  const lawan = SAYA==='aku' ? 'dia' : 'aku';
+  $('#btn-semua-akun').textContent = semuaAkun
+    ? `Sembunyikan rekening ${ORANG[lawan]}`
+    : `Tampilkan rekening ${ORANG[lawan]} juga`;
+}
+
 function bukaForm(jenis, t){
   editId = t ? t.id : null;
   form = {jenis, kategori:null, sumber:null, untuk:'bersama', kantong:null, arah:1};
@@ -561,10 +585,13 @@ function bukaForm(jenis, t){
   $$('#kantong-seg button').forEach(b=>b.setAttribute('aria-pressed','false'));
   $$('#kat-chips .chip, #sum-chips .chip, #quick-chips .chip').forEach(c=>c.setAttribute('aria-pressed','false'));
 
-  const opsi = AKUN.filter(a=>a.aktif).map(a=>`<option value="${a.id}">${namaAkun(a)}</option>`).join('');
-  $('#sel-akun').innerHTML = opsi;
-  $('#sel-tujuan').innerHTML = opsi;
-  const mandiri = cariAkun('Mandiri','aku'), bri = cariAkun(AKUN_KANTONG,'aku');
+  // kalau catatan ini pakai rekening pasangan, buka dulu daftarnya
+  if(t && t.akun_id){
+    const a = AKUN.find(x=>x.id===t.akun_id);
+    if(a && a.pemilik!==SAYA && a.pemilik!=='bersama') semuaAkun = true;
+  }
+  isiAkun();
+  const mandiri = cariAkun('Mandiri',SAYA), bri = cariAkun(AKUN_KANTONG,'aku');
   if(mandiri) $('#sel-akun').value = mandiri.id;
   if(jenis==='pindah' && bri) $('#sel-tujuan').value = bri.id;
   $('#kat-cari').value = ''; filterKategori('');
@@ -827,6 +854,8 @@ $('#btn-detail').onclick = ()=>{
   $('#btn-detail').textContent = el.hidden ? 'Lihat semua kategori' : 'Tutup detail';
 };
 
+$('#btn-semua-akun').onclick = ()=>{ semuaAkun = !semuaAkun; isiAkun(); };
+
 /* ---------- hapus catatan ---------- */
 $('#btn-hapus').onclick = async ()=>{
   if(!editId) return;
@@ -944,8 +973,9 @@ sb.auth.onAuthStateChange(async (_e, session)=>{
   if(!session){ show('gate'); return; }
   ME = session.user;
   const {data:p} = await sb.from('profiles').select('nama').eq('id',ME.id).maybeSingle();
-  const un = (ME.email||'').split('@')[0];
-  NAMA = p?.nama || (un ? un.charAt(0).toUpperCase()+un.slice(1) : '');
+  const un = (ME.email||'').split('@')[0].toLowerCase();
+  SAYA = PEMILIK_LOGIN[un] || 'aku';
+  NAMA = p?.nama || ORANG[SAYA] || (un ? un.charAt(0).toUpperCase()+un.slice(1) : '');
   if(!await muat()) return;
   if(!AKUN.length){ renderSetup(); show('setup'); return; }
   renderHome(); show('home');
