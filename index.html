@@ -433,8 +433,7 @@ const AKUN_AWAL = [
   {nama:'Tunai',        jenis:'tunai',  pemilik:'aku', urutan:3},
   {nama:'Mandiri',      jenis:'bank',   pemilik:'dia', urutan:4},
   {nama:'BNI',          jenis:'bank',   pemilik:'dia', urutan:5},
-  {nama:'Tunai',        jenis:'tunai',  pemilik:'dia', urutan:6},
-  {nama:'Kartu kredit', jenis:'kredit', pemilik:'bersama', urutan:7}
+  {nama:'Tunai',        jenis:'tunai',  pemilik:'dia', urutan:6}
 ];
 const AKUN_KANTONG = 'BRI';   // kantong tabungan & investasi diambil dari saldo rekening ini
 const WARNA = ['#E8A33D','#2E7D6B','#9E4B35','#4A6FA5','#7C6AA8','#B08968','#5C8A72'];
@@ -504,10 +503,7 @@ function renderHome(){
   el.textContent = sembunyi ? 'Rp ••••••' : rpS(totalUang());
   el.classList.toggle('samar', sembunyi);
 
-  const utang = AKUN.filter(a=>a.jenis==='kredit').reduce((s,a)=>s+saldoAkun(a.id),0);
-  $('#total-sub').textContent = utang < 0
-    ? `Sudah dikurangi utang kartu kredit ${rp(utang)}`
-    : 'Semua rekening, tunai, dan kartu kredit';
+  $('#total-sub').textContent = 'Semua rekening dan uang tunai';
 
   $('#akun-list').innerHTML = AKUN.filter(a=>a.aktif).map(a=>{
     const s = saldoAkun(a.id);
@@ -930,7 +926,7 @@ document.addEventListener('click', e=>{
 function renderSetup(){
   $('#setup-list').innerHTML = AKUN_AWAL.map((a,i)=>`
     <div class="field">
-      <label for="sa${i}">${a.nama} · ${ORANG[a.pemilik]}${a.jenis==='kredit'?' <span class="muted">— isi sisa tagihan, kosongkan kalau tidak punya</span>':''}</label>
+      <label for="sa${i}">${a.nama} · ${ORANG[a.pemilik]}</label>
       <div class="amount-wrap" style="padding:11px 14px">
         <span class="rp" style="font-size:15px">Rp</span>
         <input id="sa${i}" type="text" inputmode="numeric" placeholder="0"
@@ -944,7 +940,7 @@ function renderSetup(){
 $('#btn-setup').onclick = async ()=>{
   const rows = AKUN_AWAL.map((a,i)=>{
     const v = Number(($(`#sa${i}`).value||'').replace(/\D/g,''))||0;
-    return {...a, saldo_awal: a.jenis==='kredit' ? -v : v, aktif: !(a.jenis==='kredit' && v===0)};
+    return {...a, saldo_awal: v, aktif: true};
   });
   $('#btn-setup').disabled = true;
   const {error} = await sb.from('accounts').insert(rows);
