@@ -187,6 +187,12 @@ input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-heigh
 .ab .flow{display:flex;gap:14px;margin-top:3px;font-size:13px}
 .ab .flow span{white-space:nowrap}
 .linkish.dark{color:var(--muted);margin-top:9px;display:inline-block}
+.row[data-untuk-lihat]{cursor:pointer;margin:0 -8px;padding-left:8px;padding-right:8px;border-radius:9px}
+.row[data-untuk-lihat]:active{background:#F4F4EE}
+.row[data-untuk-lihat] .nm::after{content:' ›';color:#C2C2B6}
+.row[data-untuk-lihat].aktif{background:#F4F4EE}
+.row[data-untuk-lihat].aktif .nm{font-weight:600}
+.row[data-untuk-lihat].aktif .nm::after{content:' ⌄'}
 .kelola-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #F0F0EA}
 .kelola-row:last-child{border-bottom:0}
 .kelola-row .nm{flex:1;font-size:14px;min-width:0}
@@ -297,7 +303,7 @@ input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-heigh
     <div class="seg" id="untuk-seg">
       <button data-untuk="aku" id="u-aku">Dany</button>
       <button data-untuk="dia" id="u-dia">Pho</button>
-      <button data-untuk="bersama" aria-pressed="true">Bersama</button>
+      <button data-untuk="bersama">Bersama</button>
     </div>
   </div>
 
@@ -360,6 +366,14 @@ input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-heigh
   <div class="card">
     <h3>Keluar untuk siapa</h3>
     <div id="untuk-list"></div>
+    <div id="untuk-detail" hidden style="margin-top:16px;padding-top:16px;border-top:1px solid var(--line)">
+      <div style="font-size:14px;font-weight:600;margin-bottom:12px" id="ud-judul"></div>
+      <div class="donut-box">
+        <div class="donut"><svg id="donut2" viewBox="0 0 120 120" width="150" height="150" role="img" aria-label="Komposisi pengeluaran"></svg></div>
+        <div class="legend" id="legend2"></div>
+      </div>
+      <div id="ud-semua" style="margin-top:14px"></div>
+    </div>
   </div>
 
   <div class="card">
@@ -560,7 +574,7 @@ function isiAkun(){
 
 function bukaForm(jenis, t){
   editId = t ? t.id : null;
-  form = {jenis, kategori:null, sumber:null, untuk:'bersama', kantong:null, arah:1};
+  form = {jenis, kategori:null, sumber:null, untuk:null, kantong:null, arah:1};
   $('#amt').value=''; $('#note').value=''; $('#tgl').value = iso(new Date());
   err('#form-err','');
   $('#f-hapus').hidden = !t;
@@ -577,7 +591,7 @@ function bukaForm(jenis, t){
   $('#f-kantong').hidden  = jenis!=='alokasi';
   $('#lbl-akun').textContent = jenis==='masuk' ? 'Masuk ke mana' : jenis==='pindah' ? 'Dari mana' : 'Bayar pakai';
 
-  $$('#untuk-seg button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.untuk==='bersama'));
+  $$('#untuk-seg button').forEach(b=>b.setAttribute('aria-pressed','false'));
   $$('#kantong-seg button').forEach(b=>b.setAttribute('aria-pressed','false'));
   $$('#kat-chips .chip, #sum-chips .chip, #quick-chips .chip').forEach(c=>c.setAttribute('aria-pressed','false'));
 
@@ -597,7 +611,7 @@ function bukaForm(jenis, t){
     $('#tgl').value = t.tanggal;
     $('#note').value = t.catatan || '';
     form.kategori = t.kategori; form.sumber = t.sumber;
-    form.untuk = t.untuk || 'bersama'; form.kantong = t.kantong; form.arah = t.arah || 1;
+    form.untuk = t.untuk || null; form.kantong = t.kantong; form.arah = t.arah || 1;
     $$('#kat-chips .chip:not(.tambah)').forEach(c=>c.setAttribute('aria-pressed', c.dataset.v===t.kategori));
     $$('#sum-chips .chip:not(.tambah)').forEach(c=>c.setAttribute('aria-pressed', c.dataset.v===t.sumber));
     $$('#untuk-seg button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.untuk===form.untuk));
@@ -694,6 +708,7 @@ $('#btn-save').onclick = async ()=>{
   err('#form-err','');
   if(!j) return err('#form-err','Isi jumlahnya dulu.');
   if(form.jenis==='keluar' && !form.kategori) return err('#form-err','Pilih kategorinya dulu.');
+  if(form.jenis==='keluar' && !form.untuk)    return err('#form-err','Pilih dulu ini pengeluaran untuk siapa.');
   if(form.jenis==='masuk'  && !form.sumber)   return err('#form-err','Pilih uangnya dari mana.');
   if(form.jenis==='alokasi'&& !form.kantong)  return err('#form-err','Pilih kantongnya dulu.');
   if(form.jenis==='pindah' && $('#sel-akun').value===$('#sel-tujuan').value)
@@ -778,8 +793,10 @@ function renderMonitor(){
   const labelU = {aku:ORANG.aku, dia:ORANG.dia, bersama:'Bersama'};
   $('#untuk-list').innerHTML = keluar
     ? Object.entries(u).sort((a,b)=>b[1]-a[1]).map(([k,v])=>
-        `<div class="row"><span class="nm">${labelU[k]}</span><span class="vl">${rp(v)} <span class="muted tiny">${Math.round(v/keluar*100)}%</span></span></div>`).join('')
+        `<div class="row" data-untuk-lihat="${k}"><span class="nm">${labelU[k]}</span><span class="vl">${rp(v)} <span class="muted tiny">${Math.round(v/keluar*100)}%</span></span></div>`).join('')
     : `<div class="empty">Belum ada pengeluaran bulan ini.</div>`;
+  if(untukDibuka) tampilkanUntuk(untukDibuka);
+  else $('#untuk-detail').hidden = true;
 
   const flow = {};
   AKUN.forEach(a=>flow[a.id] = {masuk:0, keluar:0});
@@ -813,10 +830,10 @@ function renderMonitor(){
   $('#btn-trx').textContent = `Lihat daftar transaksi (${rows.length})`;
 }
 
-function donut(top, total){
-  const svg = $('#donut'), R=42, C=2*Math.PI*R;
+function donut(top, total, svgSel='#donut', legSel='#legend'){
+  const svg = $(svgSel), R=42, C=2*Math.PI*R;
   if(!total){ svg.innerHTML = `<circle cx="60" cy="60" r="${R}" fill="none" stroke="#E5E5DC" stroke-width="16"/>`;
-              $('#legend').innerHTML = `<div class="empty">Belum ada data.</div>`; return; }
+              $(legSel).innerHTML = `<div class="empty">Belum ada data.</div>`; return; }
   let off = 0, parts = '';
   top.forEach(([,v],i)=>{
     const frac = v/total;
@@ -831,12 +848,48 @@ function donut(top, total){
       transform="rotate(-90 60 60)"/>`;
   }
   svg.innerHTML = parts;
-  $('#legend').innerHTML = top.map(([k,v],i)=>
+  $(legSel).innerHTML = top.map(([k,v],i)=>
     `<div class="lg"><span class="dot" style="background:${WARNA[i%WARNA.length]}"></span>
      <span>${k}</span><span class="v">${Math.round(v/total*100)}%</span></div>`).join('')
     + (off<0.999 ? `<div class="lg"><span class="dot" style="background:#E5E5DC"></span>
      <span class="muted">Kategori lain</span><span class="v muted">${Math.round((1-off)*100)}%</span></div>` : '');
 }
+
+/* ---------- rincian per orang ---------- */
+let untukDibuka = null;
+
+function tampilkanUntuk(siapa){
+  const labelU = {aku:ORANG.aku, dia:ORANG.dia, bersama:'Bersama'};
+  const rows = bulanTrx().filter(t=>t.jenis==='keluar' && (t.untuk||'bersama')===siapa);
+  const total = rows.reduce((s,t)=>s+Number(t.jumlah),0);
+
+  const per = {};
+  rows.forEach(t=>{ per[t.kategori]=(per[t.kategori]||0)+Number(t.jumlah); });
+  const urut = Object.entries(per).sort((a,b)=>b[1]-a[1]);
+
+  $('#ud-judul').textContent = `${labelU[siapa]} — ${rp(total)}`;
+  donut(urut.slice(0,5), total, '#donut2', '#legend2');
+  $('#ud-semua').innerHTML = urut.length
+    ? urut.map(([k,v])=>`<div class="row"><span class="nm">${k}</span><span class="vl">${rp(v)}</span></div>`).join('')
+    : '';
+  $('#untuk-detail').hidden = false;
+
+  $$('#untuk-list .row').forEach(r=>
+    r.classList.toggle('aktif', r.dataset.untukLihat===siapa));
+}
+
+document.addEventListener('click', e=>{
+  const r = e.target.closest('[data-untuk-lihat]'); if(!r) return;
+  const siapa = r.dataset.untukLihat;
+  if(untukDibuka === siapa){
+    untukDibuka = null;
+    $('#untuk-detail').hidden = true;
+    $$('#untuk-list .row').forEach(x=>x.classList.remove('aktif'));
+  } else {
+    untukDibuka = siapa;
+    tampilkanUntuk(siapa);
+  }
+});
 
 $('#m-prev').onclick = ()=>{ cursor.setMonth(cursor.getMonth()-1); renderMonitor(); };
 $('#m-next').onclick = ()=>{ cursor.setMonth(cursor.getMonth()+1); renderMonitor(); };
