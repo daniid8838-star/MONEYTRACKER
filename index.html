@@ -282,11 +282,6 @@ input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-heigh
     <div class="amount-wrap"><span class="rp">Rp</span><input id="amt" type="text" inputmode="numeric" placeholder="0"></div>
   </div>
 
-  <div id="f-quick" class="field" hidden>
-    <label>Yang sering</label>
-    <div class="chips" id="quick-chips"></div>
-  </div>
-
   <div id="f-kategori" class="field" hidden>
     <label for="kat-cari">Kategori</label>
     <div class="searchbox"><input id="kat-cari" type="text" placeholder="Cari kategori…" autocomplete="off"></div>
@@ -436,11 +431,6 @@ const DOMAIN_LOGIN = '@moneytracker.local';
    bukan lagi dari file ini. */
 let KAT = [];                                        // semua baris categories
 const aktifKat = j => KAT.filter(k=>k.jenis===j && k.aktif).map(k=>k.nama);
-const QUICK  = [
-  ['Jajan kopi','Makan & Jajan'],['Makan siang','Makan & Jajan'],
-  ['Bensin motor','Kendaraan'],['Bensin mobil','Kendaraan'],
-  ['Canang','Upacara & Adat'],['Bahan makanan','Belanja Dapur']
-];
 const AKUN_AWAL = [
   {nama:'BRI',          jenis:'bank',   pemilik:'aku', urutan:1},
   {nama:'Mandiri',      jenis:'bank',   pemilik:'aku', urutan:2},
@@ -582,7 +572,6 @@ function bukaForm(jenis, t){
                 jenis==='pindah' ? 'Pindah uang' : 'Sisihkan uang';
   $('#form-title').textContent = t ? 'Ubah ' + judul.toLowerCase() : judul;
 
-  $('#f-quick').hidden    = jenis!=='keluar';
   $('#f-kategori').hidden = jenis!=='keluar';
   $('#f-untuk').hidden    = jenis!=='keluar';
   $('#f-sumber').hidden   = jenis!=='masuk';
@@ -593,7 +582,7 @@ function bukaForm(jenis, t){
 
   $$('#untuk-seg button').forEach(b=>b.setAttribute('aria-pressed','false'));
   $$('#kantong-seg button').forEach(b=>b.setAttribute('aria-pressed','false'));
-  $$('#kat-chips .chip, #sum-chips .chip, #quick-chips .chip').forEach(c=>c.setAttribute('aria-pressed','false'));
+  $$('#kat-chips .chip, #sum-chips .chip').forEach(c=>c.setAttribute('aria-pressed','false'));
 
   // kalau catatan ini pakai rekening pasangan, buka dulu daftarnya
   if(t && t.akun_id){
@@ -692,12 +681,6 @@ function filterKategori(q){
   } else if(tampil && kosong){ kosong.remove(); }
 }
 $('#kat-cari').addEventListener('input', e=>filterKategori(e.target.value));
-chips('#quick-chips', QUICK.map(q=>[q[0],q[1]]), (v,c)=>{
-  form.kategori = v;
-  $('#kat-cari').value = ''; filterKategori('');
-  $$('#kat-chips .chip').forEach(o=>o.setAttribute('aria-pressed', o.dataset.v===v));
-  if(!$('#note').value) $('#note').value = c.textContent;
-});
 $('#untuk-seg').onclick = e=>{ const b=e.target.closest('button'); if(!b)return;
   $$('#untuk-seg button').forEach(o=>o.setAttribute('aria-pressed',o===b)); form.untuk=b.dataset.untuk; };
 $('#kantong-seg').onclick = e=>{ const b=e.target.closest('button'); if(!b)return;
