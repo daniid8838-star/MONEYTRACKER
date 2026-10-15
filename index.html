@@ -187,6 +187,8 @@ input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-heigh
 .ab .flow{display:flex;gap:14px;margin-top:3px;font-size:13px}
 .ab .flow span{white-space:nowrap}
 .linkish.dark{color:var(--muted);margin-top:9px;display:inline-block}
+.row[data-sesuaikan]{cursor:pointer;margin:0 -8px;padding-left:8px;padding-right:8px;border-radius:9px}
+.row[data-sesuaikan]:active{background:#F4F4EE}
 .row[data-untuk-lihat]{cursor:pointer;margin:0 -8px;padding-left:8px;padding-right:8px;border-radius:9px}
 .row[data-untuk-lihat]:active{background:#F4F4EE}
 .row[data-untuk-lihat] .nm::after{content:' ›';color:#C2C2B6}
@@ -511,7 +513,7 @@ function renderHome(){
 
   $('#akun-list').innerHTML = AKUN.filter(a=>a.aktif).map(a=>{
     const s = saldoAkun(a.id);
-    return `<div class="row"><span class="nm">${namaAkun(a)}</span>
+    return `<div class="row" data-sesuaikan="${a.id}"><span class="nm">${namaAkun(a)}</span>
             <span class="vl ${s<0?'neg':''}">${rpS(s)}</span></div>`;
   }).join('');
 
@@ -887,6 +889,43 @@ $('#btn-detail').onclick = ()=>{
 };
 
 $('#btn-semua-akun').onclick = ()=>{ semuaAkun = !semuaAkun; isiAkun(); };
+
+/* ---------- sesuaikan saldo dengan kenyataan ---------- */
+document.addEventListener('click', async e=>{
+  const r = e.target.closest('[data-sesuaikan]'); if(!r) return;
+  const id = Number(r.dataset.sesuaikan);
+  const a  = AKUN.find(x=>x.id===id); if(!a) return;
+  const kini = saldoAkun(id);
+
+  const isi = prompt(
+    `${namaAkun(a)}\nDi app sekarang: ${rpS(kini)}\n\nBerapa yang sebenarnya?`,
+    String(Math.round(kini))
+  );
+  if(isi === null) return;
+  const asli = Number(String(isi).replace(/[^\d-]/g,''));
+  if(isNaN(asli)) return toast('Angkanya tidak terbaca');
+
+  const selisih = asli - kini;
+  if(selisih === 0) return toast('Sudah cocok, tidak ada yang diubah');
+
+  const arahKata = selisih > 0 ? 'ditambah' : 'dikurangi';
+  if(!confirm(`Saldo ${namaAkun(a)} akan ${arahKata} ${rp(selisih)} supaya jadi ${rpS(asli)}.\n\nLanjutkan?`)) return;
+
+  const row = {
+    jenis: selisih > 0 ? 'masuk' : 'keluar',
+    tanggal: iso(new Date()),
+    jumlah: Math.abs(selisih),
+    akun_id: id,
+    catatan: 'Penyesuaian saldo',
+    dibuat_oleh: ME.id,
+    sumber:   selisih > 0 ? 'Penyesuaian saldo' : null,
+    kategori: selisih < 0 ? 'Penyesuaian saldo' : null,
+    untuk:    selisih < 0 ? 'bersama' : null
+  };
+  const {error} = await sb.from('transactions').insert(row);
+  if(error) return toast('Gagal: '+error.message);
+  await muat(); renderHome(); toast('Saldo disesuaikan');
+});
 
 /* ---------- hapus catatan ---------- */
 $('#btn-hapus').onclick = async ()=>{
