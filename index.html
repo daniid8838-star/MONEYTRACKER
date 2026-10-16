@@ -187,6 +187,18 @@ input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-heigh
 .ab .flow{display:flex;gap:14px;margin-top:3px;font-size:13px}
 .ab .flow span{white-space:nowrap}
 .linkish.dark{color:var(--muted);margin-top:9px;display:inline-block}
+.jatah{border-radius:var(--r);padding:14px;margin-top:16px;border:1px solid var(--line);background:#fff}
+.jatah.waspada{background:#FCF2E0;border-color:#EFD9AE}
+.jatah.lewat{background:#FBEAE6;border-color:#F0CFC7}
+.jatah .j-atas{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:13.5px}
+.jatah .j-nama{font-weight:600}
+.jatah .bar{height:7px;border-radius:99px;background:#E5E5DC;margin:10px 0 7px;overflow:hidden;position:relative}
+.jatah .bar i{display:block;height:100%;border-radius:99px;background:var(--jade);transition:width .25s}
+.jatah.waspada .bar i{background:var(--marigold)}
+.jatah.lewat .bar i{background:var(--clay)}
+.jatah .bar u{position:absolute;top:-3px;width:2px;height:13px;background:var(--ink);opacity:.45}
+.jatah .j-ket{font-size:12.5px;color:var(--muted);line-height:1.4}
+.jatah.waspada .j-ket,.jatah.lewat .j-ket{color:var(--ink)}
 .row[data-sesuaikan]{cursor:pointer;margin:0 -8px;padding-left:8px;padding-right:8px;border-radius:9px}
 .row[data-sesuaikan]:active{background:#F4F4EE}
 .row[data-untuk-lihat]{cursor:pointer;margin:0 -8px;padding-left:8px;padding-right:8px;border-radius:9px}
@@ -295,6 +307,8 @@ input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-heigh
     <div class="chips" id="sum-chips"></div>
   </div>
 
+  <div id="f-jatah" hidden></div>
+
   <div id="f-untuk" class="field" hidden>
     <label>Untuk siapa</label>
     <div class="seg" id="untuk-seg">
@@ -392,7 +406,14 @@ input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-heigh
   <p class="muted tiny">Kategori yang disembunyikan tidak muncul lagi saat input, tapi catatan lama tetap utuh.</p>
 
   <div class="card">
+    <h3>Jatah bulanan</h3>
+    <div id="kel-atur"></div>
+    <p class="muted tiny" style="margin:12px 0 0">Jatah dihitung dari angka patokan, bukan dari pemasukan bulan berjalan, supaya tidak naik-turun di tengah bulan.</p>
+  </div>
+
+  <div class="card">
     <h3>Pengeluaran</h3>
+    <p class="muted tiny" style="margin:-6px 0 12px">Tap nama pos di sebelah kanan untuk memindahkan kategori.</p>
     <div id="kel-keluar"></div>
     <div style="margin-top:14px"><button class="btn ghost" style="font-size:14px;padding:11px"
       data-tambah-kat="keluar">+ Tambah kategori</button></div>
@@ -432,7 +453,10 @@ const DOMAIN_LOGIN = '@moneytracker.local';
 /* Kategori sekarang disimpan di database — diatur lewat tombol Kelola di app,
    bukan lagi dari file ini. */
 let KAT = [];                                        // semua baris categories
+let ATUR = {};                                       // patokan & persentase jatah
 const aktifKat = j => KAT.filter(k=>k.jenis===j && k.aktif).map(k=>k.nama);
+const posKat   = nama => (KAT.find(k=>k.jenis==='keluar' && k.nama===nama) || {}).pos || null;
+const LABEL_POS = { kebutuhan:'Kebutuhan', keinginan:'Keinginan' };
 const AKUN_AWAL = [
   {nama:'BRI',          jenis:'bank',   pemilik:'aku', urutan:1},
   {nama:'Mandiri',      jenis:'bank',   pemilik:'aku', urutan:2},
@@ -490,14 +514,16 @@ const kantongSaldo = k => TRX.filter(t=>t.jenis==='alokasi'&&t.kantong===k)
 
 /* ---------- muat data ---------- */
 async function muat(){
-  const [a,t,k] = await Promise.all([
+  const [a,t,k,s] = await Promise.all([
     sb.from('accounts').select('*').order('urutan'),
     sb.from('transactions').select('*').order('tanggal',{ascending:false}).order('id',{ascending:false}),
-    sb.from('categories').select('*').order('jenis').order('urutan').order('nama')
+    sb.from('categories').select('*').order('jenis').order('urutan').order('nama'),
+    sb.from('settings').select('*')
   ]);
   if(a.error||t.error){ toast('Gagal memuat data'); return false; }
   if(k.error){ toast('Tabel kategori belum dibuat — jalankan kategori-v3.sql'); }
   AKUN = a.data || []; TRX = t.data || []; KAT = k.data || [];
+  ATUR = {}; (s.data || []).forEach(r => ATUR[r.kunci] = Number(r.nilai));
   bangunChips();
   return true;
 }
@@ -596,6 +622,7 @@ function bukaForm(jenis, t){
   if(mandiri) $('#sel-akun').value = mandiri.id;
   if(jenis==='pindah' && bri) $('#sel-tujuan').value = bri.id;
   $('#kat-cari').value = ''; filterKategori('');
+  $('#f-jatah').hidden = true;
 
   if(t){
     $('#amt').value = Number(t.jumlah).toLocaleString('id-ID');
@@ -611,6 +638,7 @@ function bukaForm(jenis, t){
     if(t.tujuan_id) $('#sel-tujuan').value = t.tujuan_id;
   }
 
+  if(jenis==='keluar') tampilkanJatah();
   show('form');
   if(!t) setTimeout(()=>$('#amt').focus(),120);
 }
@@ -618,6 +646,7 @@ function bukaForm(jenis, t){
 $('#amt').addEventListener('input', e=>{
   const v = e.target.value.replace(/\D/g,'');
   e.target.value = v ? Number(v).toLocaleString('id-ID') : '';
+  if(form.jenis==='keluar') tampilkanJatah();
 });
 const nilai = () => Number(($('#amt').value||'').replace(/\D/g,''));
 
@@ -636,7 +665,7 @@ function chips(host, items, onPick, tambahJenis){
   };
 }
 function bangunChips(){
-  chips('#kat-chips', aktifKat('keluar'), v=>{ form.kategori=v; }, 'keluar');
+  chips('#kat-chips', aktifKat('keluar'), v=>{ form.kategori=v; tampilkanJatah(); }, 'keluar');
   chips('#sum-chips', aktifKat('masuk'),  v=>{ form.sumber=v;   }, 'masuk');
 }
 
@@ -663,6 +692,62 @@ async function tambahKategori(jenis){
   }
   if(jenis!=='keluar') form.kategori = simpan.kategori;
   toast(`"${nama}" ditambahkan`);
+}
+
+/* ---------- jatah per pos ---------- */
+function hitungJatah(pos){
+  const patokan = ATUR.patokan || 0;
+  const persen  = ATUR['persen_'+pos] || 0;
+  const jatah   = patokan * persen / 100;
+
+  const kini = new Date();
+  const rows = TRX.filter(t=>{
+    if(t.jenis!=='keluar') return false;
+    const d = new Date(t.tanggal+'T00:00');
+    return d.getFullYear()===kini.getFullYear() && d.getMonth()===kini.getMonth()
+           && posKat(t.kategori)===pos;
+  });
+  const terpakai = rows.reduce((s,t)=>s+Number(t.jumlah),0);
+
+  const hariTotal = new Date(kini.getFullYear(), kini.getMonth()+1, 0).getDate();
+  return { jatah, terpakai, lajuBulan: kini.getDate()/hariTotal };
+}
+
+function tampilkanJatah(){
+  const box = $('#f-jatah');
+  const pos = form.kategori ? posKat(form.kategori) : null;
+  if(!pos || !(ATUR.patokan > 0)){ box.hidden = true; return; }
+
+  const {jatah, terpakai, lajuBulan} = hitungJatah(pos);
+  if(!jatah){ box.hidden = true; return; }
+
+  const sedangDiisi = nilai() || 0;
+  const total = terpakai + sedangDiisi;
+  const laju  = total / jatah;
+
+  // Waspada kalau belanjanya lari lebih cepat 15% dari jalannya tanggal
+  const lewat   = laju >= 1;
+  const waspada = !lewat && laju > lajuBulan + 0.15;
+
+  let ket;
+  if(lewat){
+    ket = `Jatah ${LABEL_POS[pos].toLowerCase()} bulan ini sudah lewat ${rp(total - jatah)}.`;
+  } else if(waspada){
+    ket = `Bulan baru jalan ${Math.round(lajuBulan*100)}%, tapi jatah ${LABEL_POS[pos].toLowerCase()} sudah terpakai ${Math.round(laju*100)}%. Agak cepat.`;
+  } else {
+    ket = `Bulan baru jalan ${Math.round(lajuBulan*100)}%. Masih aman.`;
+  }
+
+  box.className = 'jatah' + (lewat ? ' lewat' : waspada ? ' waspada' : '');
+  box.innerHTML = `
+    <div class="j-atas">
+      <span class="j-nama">${LABEL_POS[pos]}</span>
+      <span>${rp(total)} <span class="muted">dari ${rp(jatah)}</span></span>
+    </div>
+    <div class="bar"><i style="width:${Math.min(laju,1)*100}%"></i>
+      <u style="left:${Math.min(lajuBulan,1)*100}%"></u></div>
+    <div class="j-ket">${ket}</div>`;
+  box.hidden = false;
 }
 
 function filterKategori(q){
@@ -958,16 +1043,71 @@ function renderKelola(){
   const baris = j => {
     const list = KAT.filter(k=>k.jenis===j);
     if(!list.length) return `<div class="empty">Belum ada.</div>`;
-    return list.map(k=>`
-      <div class="kelola-row ${k.aktif?'':'off'}">
+    return list.map(k=>{
+      const pos = j==='keluar'
+        ? `<button data-pos-id="${k.id}" data-pos-kini="${k.pos||''}">${
+             k.pos ? LABEL_POS[k.pos] : 'Tidak dihitung'}</button>`
+        : '';
+      return `<div class="kelola-row ${k.aktif?'':'off'}">
         <span class="nm">${k.nama}</span>
+        ${pos}
         <button data-kat-id="${k.id}" data-kat-aktif="${k.aktif?'1':'0'}">
           ${k.aktif?'Sembunyikan':'Tampilkan'}</button>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   };
   $('#kel-keluar').innerHTML = baris('keluar');
   $('#kel-masuk').innerHTML  = baris('masuk');
+
+  const p = ATUR.patokan || 0;
+  const row = (kunci, label, nilaiTampil, sisa) => `
+    <div class="kelola-row">
+      <span class="nm">${label}${sisa?`<br><span class="muted tiny">${sisa}</span>`:''}</span>
+      <button data-atur="${kunci}">${nilaiTampil}</button>
+    </div>`;
+  const jt = k => p ? rp(p * (ATUR['persen_'+k]||0) / 100) : '—';
+  $('#kel-atur').innerHTML =
+    row('patokan','Perkiraan pemasukan sebulan', p ? rp(p) : 'Belum diisi') +
+    row('persen_kebutuhan','Kebutuhan', (ATUR.persen_kebutuhan||0)+'%', jt('kebutuhan')) +
+    row('persen_keinginan','Keinginan', (ATUR.persen_keinginan||0)+'%', jt('keinginan')) +
+    row('persen_tabungan','Tabungan & investasi', (ATUR.persen_tabungan||0)+'%', jt('tabungan'));
 }
+
+const JUDUL_ATUR = {
+  patokan:'Perkiraan pemasukan sebulan (rupiah)',
+  persen_kebutuhan:'Persen untuk Kebutuhan',
+  persen_keinginan:'Persen untuk Keinginan',
+  persen_tabungan:'Persen untuk Tabungan & investasi'
+};
+
+document.addEventListener('click', async e=>{
+  const a = e.target.closest('[data-atur]');
+  if(a){
+    const kunci = a.dataset.atur;
+    const isi = prompt(JUDUL_ATUR[kunci] + ':', String(ATUR[kunci] || 0));
+    if(isi === null) return;
+    const n = Number(String(isi).replace(/[^\d]/g,''));
+    if(isNaN(n)) return toast('Angkanya tidak terbaca');
+    if(kunci !== 'patokan' && n > 100) return toast('Persen tidak boleh lebih dari 100');
+    const {error} = await sb.from('settings').update({nilai:n}).eq('kunci', kunci);
+    if(error) return toast('Gagal: '+error.message);
+    await muat(); renderKelola();
+    const jml = (ATUR.persen_kebutuhan||0)+(ATUR.persen_keinginan||0)+(ATUR.persen_tabungan||0);
+    if(kunci !== 'patokan' && jml !== 100) toast(`Total persen sekarang ${jml}%, belum pas 100%`);
+    return;
+  }
+
+  const p = e.target.closest('[data-pos-id]');
+  if(p){
+    const urut = ['kebutuhan','keinginan',''];
+    const kini = p.dataset.posKini;
+    const baru = urut[(urut.indexOf(kini) + 1) % urut.length] || null;
+    p.disabled = true;
+    const {error} = await sb.from('categories').update({pos:baru}).eq('id', Number(p.dataset.posId));
+    if(error){ p.disabled=false; return toast('Gagal: '+error.message); }
+    await muat(); renderKelola();
+  }
+});
 
 document.addEventListener('click', async e=>{
   const t = e.target.closest('[data-kat-id]');
