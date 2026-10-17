@@ -259,6 +259,22 @@ input[type=text],input[type=email],input[type=password],input[type=date],select,
 
 .linkish.dark{color:var(--muted);margin-top:10px;display:inline-block}
 
+/* ---------- lingkaran orang ---------- */
+.orang-baris{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-top:14px}
+.orang-kartu{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:15px 12px;box-shadow:var(--shadow);cursor:pointer;font:inherit;color:var(--ink);
+  display:flex;flex-direction:column;align-items:center;gap:9px;transition:transform .12s ease}
+.orang-kartu:active{transform:scale(.978)}
+.or-foto{width:62px;height:62px;border-radius:50%;background:var(--seg-bg);
+  background-size:cover;background-position:center;flex:0 0 auto;
+  display:flex;align-items:center;justify-content:center;
+  font-family:Fraunces,Georgia,serif;font-weight:700;font-size:23px;color:var(--muted);
+  border:2px solid var(--card);box-shadow:0 0 0 1px var(--line)}
+.or-foto.besar{width:82px;height:82px;font-size:30px}
+.orang-kartu .nm2{font-size:14px;font-weight:600}
+.orang-kartu .vl2{font-size:13px;color:var(--clay);font-weight:600}
+.or-kepala{display:flex;align-items:center;gap:16px;margin-top:16px}
+
 /* ---------- pencarian kategori ---------- */
 .searchbox{position:relative;margin-bottom:10px}
 .searchbox input{padding-left:38px}
@@ -334,6 +350,8 @@ input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-heigh
       <button class="act mv"  data-go="pindah">Pindah<span>Antar rekening</span></button>
       <button class="act mon" data-go="monitor">Monitor<span>Ringkasan bulanan</span></button>
     </div>
+
+    <div class="orang-baris" id="orang-baris"></div>
 
     <div class="card">
       <h3>Rekening</h3>
@@ -472,6 +490,52 @@ input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-heigh
   </div>
 </div></section>
 
+<!-- ======================= HALAMAN PER ORANG ======================= -->
+<section id="s-orang" class="screen"><div class="wrap">
+  <div class="topbar"><button class="back" data-go="home">← Kembali</button><h2 id="or-judul"></h2></div>
+
+  <div class="or-kepala">
+    <div class="or-foto besar" id="or-foto"></div>
+    <div>
+      <button class="btn ghost" id="or-ganti" style="font-size:13px;padding:9px 14px;width:auto">Ganti foto</button>
+      <input type="file" id="or-file" accept="image/*" hidden>
+    </div>
+  </div>
+
+  <div class="monthbar">
+    <button id="or-prev" aria-label="Bulan sebelumnya">‹</button>
+    <span class="m" id="or-bulan"></span>
+    <button id="or-next" aria-label="Bulan berikutnya">›</button>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="k">Pemasukan</div><div class="v pos" id="or-in">—</div></div>
+    <div class="stat"><div class="k">Pengeluaran</div><div class="v neg" id="or-out">—</div></div>
+  </div>
+
+  <div class="card">
+    <h3>Rincian pengeluaran</h3>
+    <p class="muted tiny" id="or-rincian" style="margin:-6px 0 13px"></p>
+    <div class="donut-box">
+      <div class="donut"><svg id="donut3" viewBox="0 0 120 120" width="150" height="150" role="img" aria-label="Komposisi pengeluaran"></svg></div>
+      <div class="legend" id="legend3"></div>
+    </div>
+    <div style="margin-top:14px"><button class="btn ghost" id="or-detail" style="font-size:14px;padding:11px">Lihat semua kategori</button></div>
+    <div id="or-semua" hidden style="margin-top:6px"></div>
+  </div>
+
+  <div class="card">
+    <h3>Rekening</h3>
+    <div id="or-akun"></div>
+  </div>
+
+  <div class="card">
+    <h3>Catatan bulan ini</h3>
+    <button class="btn ghost" id="or-trx-btn" style="font-size:14px;padding:11px">Lihat daftar</button>
+    <div id="or-trx" hidden style="margin-top:6px"></div>
+  </div>
+</div></section>
+
 <!-- ======================= KELOLA KATEGORI ======================= -->
 <section id="s-kelola" class="screen"><div class="wrap">
   <div class="topbar"><button class="back" data-go="home">← Kembali</button><h2>Kelola kategori</h2></div>
@@ -513,7 +577,7 @@ const SUPABASE_URL = 'https://imipkakckrxzrqkdpitm.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_qJsqQD4ez4Avr1lfgapGPw_cSysDMYj';
 
 /* Nama kalian berdua. Dipakai di seluruh app, sama untuk siapa pun yang login. */
-const ORANG = { aku: 'Dany', dia: 'Pho', bersama: 'Bersama' };
+const ORANG = { aku: 'Dany', dia: 'Pho', bersama: 'Bersama' };  // diperbarui dari tabel orang
 
 /* Username mana milik siapa. Dipakai supaya tiap orang hanya melihat
    rekeningnya sendiri (plus yang bersama) saat input. */
@@ -526,6 +590,7 @@ const DOMAIN_LOGIN = '@moneytracker.local';
    bukan lagi dari file ini. */
 let KAT = [];                                        // semua baris categories
 let ATUR = {};                                       // patokan & persentase jatah
+let ORG  = {};                                       // nama & foto tiap orang
 const aktifKat = j => KAT.filter(k=>k.jenis===j && k.aktif).map(k=>k.nama);
 const posKat   = nama => (KAT.find(k=>k.jenis==='keluar' && k.nama===nama) || {}).pos || null;
 const LABEL_POS = { kebutuhan:'Kebutuhan', keinginan:'Keinginan' };
@@ -592,16 +657,20 @@ const kantongSaldo = k => TRX.filter(t=>t.jenis==='alokasi'&&t.kantong===k)
 
 /* ---------- muat data ---------- */
 async function muat(){
-  const [a,t,k,s] = await Promise.all([
+  const [a,t,k,s,o] = await Promise.all([
     sb.from('accounts').select('*').order('urutan'),
     sb.from('transactions').select('*').order('tanggal',{ascending:false}).order('id',{ascending:false}),
     sb.from('categories').select('*').order('jenis').order('urutan').order('nama'),
-    sb.from('settings').select('*')
+    sb.from('settings').select('*'),
+    sb.from('orang').select('*')
   ]);
   if(a.error||t.error){ toast('Gagal memuat data'); return false; }
   if(k.error){ toast('Tabel kategori belum dibuat — jalankan kategori-v3.sql'); }
   AKUN = a.data || []; TRX = t.data || []; KAT = k.data || [];
   ATUR = {}; (s.data || []).forEach(r => ATUR[r.kunci] = Number(r.nilai));
+  ORG  = {}; (o.data || []).forEach(r => ORG[r.kode] = r);
+  if(ORG.aku) ORANG.aku = ORG.aku.nama;
+  if(ORG.dia) ORANG.dia = ORG.dia.nama;
   bangunChips();
   return true;
 }
@@ -629,6 +698,19 @@ function renderHome(){
     <div class="row"><span class="nm">Investasi</span><span class="vl">${rpS(inv)}</span></div>
     <div class="row"><span class="nm muted">Sisa bebas di ${AKUN_KANTONG}</span>
       <span class="vl ${bebas<0?'neg':'muted'}">${rpS(bebas)}</span></div>`;
+
+  $('#orang-baris').innerHTML = ['aku','dia'].map(kode=>{
+    const o = ORG[kode] || {};
+    const nama = ORANG[kode] || '?';
+    const bulat = o.foto
+      ? `<span class="or-foto" style="background-image:url('${o.foto}')"></span>`
+      : `<span class="or-foto">${nama.charAt(0).toUpperCase()}</span>`;
+    return `<button class="orang-kartu" data-orang="${kode}">
+      ${bulat}
+      <span class="nm2">${nama}</span>
+      <span class="vl2">${rp(keluarOrang(kode, new Date()))}</span>
+    </button>`;
+  }).join('');
 
   $('#recent').innerHTML = TRX.length
     ? TRX.slice(0,6).map(barisTrx).join('')
@@ -1001,6 +1083,148 @@ function donut(top, total, svgSel='#donut', legSel='#legend'){
      <span>${k}</span><span class="v">${Math.round(v/total*100)}%</span></div>`).join('')
     + (off<0.999 ? `<div class="lg"><span class="dot" style="background:${warnaTrack()}"></span>
      <span class="muted">Kategori lain</span><span class="v muted">${Math.round((1-off)*100)}%</span></div>` : '');
+}
+
+/* ═══════ halaman per orang ═══════
+   Pengeluaran dihitung dari "untuk siapa".
+   Yang bertanda Bersama dibagi dua rata. */
+let orangDibuka = null;
+let cursorOrang = new Date();
+
+function trxBulan(d){
+  const y = d.getFullYear(), m = d.getMonth();
+  return TRX.filter(t=>{ const x = new Date(t.tanggal+'T00:00');
+                         return x.getFullYear()===y && x.getMonth()===m; });
+}
+
+/* total pengeluaran seseorang: miliknya sendiri + separuh yang bersama */
+function keluarOrang(kode, d){
+  return trxBulan(d).filter(t=>t.jenis==='keluar').reduce((s,t)=>{
+    const j = Number(t.jumlah);
+    if(t.untuk === kode)     return s + j;
+    if(t.untuk === 'bersama')return s + j/2;
+    return s;
+  }, 0);
+}
+
+/* pemasukan dihitung dari rekening siapa yang menerima */
+function masukOrang(kode, d){
+  return trxBulan(d).filter(t=>t.jenis==='masuk').reduce((s,t)=>{
+    const a = AKUN.find(x=>x.id===t.akun_id);
+    return a && a.pemilik===kode ? s + Number(t.jumlah) : s;
+  }, 0);
+}
+
+function renderOrang(){
+  const kode = orangDibuka; if(!kode) return;
+  const o = ORG[kode] || {};
+  const nama = ORANG[kode];
+
+  $('#or-judul').textContent = nama;
+  $('#or-foto').style.backgroundImage = o.foto ? `url('${o.foto}')` : '';
+  $('#or-foto').textContent = o.foto ? '' : (nama||'?').charAt(0).toUpperCase();
+
+  $('#or-bulan').textContent = bulanID(cursorOrang);
+  const kini = new Date();
+  $('#or-next').disabled = cursorOrang.getFullYear()>=kini.getFullYear()
+                        && cursorOrang.getMonth()>=kini.getMonth();
+
+  const masuk  = masukOrang(kode, cursorOrang);
+  const keluar = keluarOrang(kode, cursorOrang);
+  $('#or-in').textContent  = rp(masuk);
+  $('#or-out').textContent = rp(keluar);
+
+  const rows = trxBulan(cursorOrang).filter(t=>t.jenis==='keluar'
+                && (t.untuk===kode || t.untuk==='bersama'));
+  const sendiri = rows.filter(t=>t.untuk===kode).reduce((s,t)=>s+Number(t.jumlah),0);
+  const bareng  = keluar - sendiri;
+  $('#or-rincian').textContent = bareng
+    ? `${rp(sendiri)} khusus ${nama}, ditambah ${rp(bareng)} dari separuh pengeluaran bersama.`
+    : `Semuanya khusus ${nama}.`;
+
+  const per = {};
+  rows.forEach(t=>{
+    const j = Number(t.jumlah) * (t.untuk==='bersama' ? 0.5 : 1);
+    per[t.kategori] = (per[t.kategori]||0) + j;
+  });
+  const urut = Object.entries(per).sort((a,b)=>b[1]-a[1]);
+  donut(urut.slice(0,5), keluar, '#donut3', '#legend3');
+  $('#or-semua').innerHTML = urut.length
+    ? urut.map(([k,v])=>`<div class="row"><span class="nm">${k}</span><span class="vl">${rp(v)}</span></div>`).join('')
+    : `<div class="empty">Belum ada pengeluaran bulan ini.</div>`;
+  $('#or-semua').hidden = true;
+  $('#or-detail').textContent = 'Lihat semua kategori';
+
+  const punya = AKUN.filter(a=>a.aktif && a.pemilik===kode);
+  $('#or-akun').innerHTML = punya.length
+    ? punya.map(a=>{ const s = saldoAkun(a.id);
+        return `<div class="row"><span class="nm">${a.nama}</span>
+                <span class="vl ${s<0?'neg':''}">${rpS(s)}</span></div>`; }).join('')
+    : `<div class="empty">Tidak ada rekening atas namanya.</div>`;
+
+  $('#or-trx').innerHTML = rows.length
+    ? rows.map(barisTrx).join('')
+    : `<div class="empty">Bulan ini masih kosong.</div>`;
+  $('#or-trx').hidden = true;
+  $('#or-trx-btn').textContent = `Lihat daftar (${rows.length})`;
+}
+
+$('#or-prev').onclick = ()=>{ cursorOrang.setMonth(cursorOrang.getMonth()-1); renderOrang(); };
+$('#or-next').onclick = ()=>{ cursorOrang.setMonth(cursorOrang.getMonth()+1); renderOrang(); };
+$('#or-detail').onclick = ()=>{
+  const el = $('#or-semua'); el.hidden = !el.hidden;
+  $('#or-detail').textContent = el.hidden ? 'Lihat semua kategori' : 'Tutup detail';
+};
+$('#or-trx-btn').onclick = ()=>{
+  const el = $('#or-trx'); el.hidden = !el.hidden;
+  const n = el.querySelectorAll('.row').length;
+  $('#or-trx-btn').textContent = el.hidden ? `Lihat daftar (${n})` : 'Tutup daftar';
+};
+
+document.addEventListener('click', e=>{
+  const b = e.target.closest('[data-orang]'); if(!b) return;
+  orangDibuka = b.dataset.orang;
+  cursorOrang = new Date();
+  renderOrang(); show('orang');
+});
+
+/* ---------- ganti foto ---------- */
+$('#or-ganti').onclick = ()=> $('#or-file').click();
+$('#or-file').onchange = async e=>{
+  const file = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if(!file || !orangDibuka) return;
+  toast('Memproses foto…');
+  try{
+    const kecil = await kecilkanFoto(file, 256);
+    const {error} = await sb.from('orang').update({foto:kecil}).eq('kode', orangDibuka);
+    if(error) return toast('Gagal: '+error.message);
+    await muat(); renderOrang(); toast('Foto diganti');
+  }catch(err){ toast('Fotonya tidak terbaca'); }
+};
+
+/* Dikecilkan dan dipotong jadi kotak sebelum disimpan, supaya ringan */
+function kecilkanFoto(file, sisi){
+  return new Promise((res, rej)=>{
+    const fr = new FileReader();
+    fr.onerror = rej;
+    fr.onload = ()=>{
+      const img = new Image();
+      img.onerror = rej;
+      img.onload = ()=>{
+        const c = document.createElement('canvas');
+        c.width = c.height = sisi;
+        const ctx = c.getContext('2d');
+        const sisiAsli = Math.min(img.width, img.height);
+        ctx.drawImage(img,
+          (img.width - sisiAsli)/2, (img.height - sisiAsli)/2, sisiAsli, sisiAsli,
+          0, 0, sisi, sisi);
+        res(c.toDataURL('image/jpeg', 0.78));
+      };
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
 }
 
 /* ---------- rincian per orang ---------- */
