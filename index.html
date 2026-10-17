@@ -531,7 +531,14 @@ input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-heigh
 
   <div class="card">
     <h3>Catatan bulan ini</h3>
-    <button class="btn ghost" id="or-trx-btn" style="font-size:14px;padding:11px">Lihat daftar</button>
+    <div class="seg" id="or-saring">
+      <button data-saring="semua" aria-pressed="true">Semua</button>
+      <button data-saring="sendiri" id="or-saring-sendiri">Khusus</button>
+      <button data-saring="bersama">Bersama</button>
+    </div>
+    <div style="margin-top:12px">
+      <button class="btn ghost" id="or-trx-btn" style="font-size:14px;padding:11px">Lihat daftar</button>
+    </div>
     <div id="or-trx" hidden style="margin-top:6px"></div>
   </div>
 </div></section>
@@ -1162,12 +1169,41 @@ function renderOrang(){
                 <span class="vl ${s<0?'neg':''}">${rpS(s)}</span></div>`; }).join('')
     : `<div class="empty">Tidak ada rekening atas namanya.</div>`;
 
-  $('#or-trx').innerHTML = rows.length
-    ? rows.map(barisTrx).join('')
-    : `<div class="empty">Bulan ini masih kosong.</div>`;
+  $('#or-saring-sendiri').textContent = `Khusus ${nama}`;
   $('#or-trx').hidden = true;
-  $('#or-trx-btn').textContent = `Lihat daftar (${rows.length})`;
+  isiDaftarOrang(rows, kode);
 }
+
+/* Daftar catatan, disaring sesuai pilihan Semua / Khusus dia / Bersama */
+let saringOrang = 'semua';
+
+function isiDaftarOrang(rows, kode){
+  const pakai = saringOrang==='sendiri' ? rows.filter(t=>t.untuk===kode)
+              : saringOrang==='bersama' ? rows.filter(t=>t.untuk==='bersama')
+              : rows;
+  const jml = pakai.reduce((s,t)=>s+Number(t.jumlah),0);
+
+  const kosong = saringOrang==='bersama' ? 'Tidak ada pengeluaran bersama bulan ini.'
+               : saringOrang==='sendiri' ? `Tidak ada yang khusus ${ORANG[kode]} bulan ini.`
+               : 'Bulan ini masih kosong.';
+  $('#or-trx').innerHTML = pakai.length ? pakai.map(barisTrx).join('')
+                                        : `<div class="empty">${kosong}</div>`;
+
+  const tutup = $('#or-trx').hidden;
+  $('#or-trx-btn').textContent = tutup
+    ? `Lihat daftar (${pakai.length}) · ${rp(jml)}`
+    : `Tutup daftar · ${rp(jml)}`;
+}
+
+$('#or-saring').onclick = e=>{
+  const b = e.target.closest('[data-saring]'); if(!b) return;
+  saringOrang = b.dataset.saring;
+  $$('#or-saring button').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  const kode = orangDibuka;
+  const rows = trxBulan(cursorOrang).filter(t=>t.jenis==='keluar'
+                && (t.untuk===kode || t.untuk==='bersama'));
+  isiDaftarOrang(rows, kode);
+};
 
 $('#or-prev').onclick = ()=>{ cursorOrang.setMonth(cursorOrang.getMonth()-1); renderOrang(); };
 $('#or-next').onclick = ()=>{ cursorOrang.setMonth(cursorOrang.getMonth()+1); renderOrang(); };
@@ -1177,8 +1213,10 @@ $('#or-detail').onclick = ()=>{
 };
 $('#or-trx-btn').onclick = ()=>{
   const el = $('#or-trx'); el.hidden = !el.hidden;
-  const n = el.querySelectorAll('.row').length;
-  $('#or-trx-btn').textContent = el.hidden ? `Lihat daftar (${n})` : 'Tutup daftar';
+  const kode = orangDibuka;
+  const rows = trxBulan(cursorOrang).filter(t=>t.jenis==='keluar'
+                && (t.untuk===kode || t.untuk==='bersama'));
+  isiDaftarOrang(rows, kode);
 };
 
 document.addEventListener('click', e=>{
