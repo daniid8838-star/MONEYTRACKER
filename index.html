@@ -379,7 +379,7 @@ input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-heigh
 
 <!-- ======================= FORM ======================= -->
 <section id="s-form" class="screen"><div class="wrap">
-  <div class="topbar"><button class="back" data-go="home">← Kembali</button><h2 id="form-title"></h2></div>
+  <div class="topbar"><button class="back" id="form-back">← Kembali</button><h2 id="form-title"></h2></div>
 
   <div class="field">
     <label for="amt">Jumlah</label>
@@ -757,7 +757,20 @@ function isiAkun(){
     : `Tampilkan rekening ${ORANG[lawan]} juga`;
 }
 
+/* Dari layar mana form ini dibuka, supaya Kembali tidak melompat ke depan */
+let asalForm = 'home';
+
+function kembaliDariForm(){
+  editId = null;
+  if(asalForm === 'monitor'){ show('monitor'); renderMonitor(); }
+  else if(asalForm === 'orang' && orangDibuka){ show('orang'); renderOrang(); }
+  else { show('home'); renderHome(); }
+}
+
 function bukaForm(jenis, t){
+  const aktif = document.querySelector('.screen.on');
+  const id = aktif ? aktif.id : '';
+  asalForm = id === 's-monitor' ? 'monitor' : id === 's-orang' ? 'orang' : 'home';
   editId = t ? t.id : null;
   form = {jenis, kategori:null, sumber:null, untuk:null, kantong:null, arah:1};
   $('#amt').value=''; $('#note').value=''; $('#tgl').value = iso(new Date());
@@ -971,9 +984,10 @@ $('#btn-save').onclick = async ()=>{
   if(error) return err('#form-err','Gagal menyimpan: '+error.message);
 
   const tadiEdit = editId; editId = null;
-  await muat(); renderHome(); show('home');
+  await muat(); renderHome();
+  kembaliDariForm();
   if(tadiEdit) toast('Perubahan tersimpan');
-  else if(form.jenis==='masuk') tawarkanInvestasi(j);
+  else if(form.jenis==='masuk' && asalForm==='home') tawarkanInvestasi(j);
   else toast('Tersimpan');
 };
 
@@ -1021,9 +1035,12 @@ function renderMonitor(){
   rows.filter(t=>t.jenis==='keluar').forEach(t=>{ per[t.kategori]=(per[t.kategori]||0)+Number(t.jumlah); });
   const urut = Object.entries(per).sort((a,b)=>b[1]-a[1]);
   donut(urut.slice(0,5), keluar);
+  const katTerbuka = !$('#kat-all').hidden;
   $('#kat-all').innerHTML = urut.length
     ? urut.map(([k,v])=>`<div class="row"><span class="nm">${k}</span><span class="vl">${rp(v)}</span></div>`).join('')
     : `<div class="empty">Belum ada pengeluaran bulan ini.</div>`;
+  $('#kat-all').hidden = !katTerbuka;
+  $('#btn-detail').textContent = katTerbuka ? 'Tutup detail' : 'Lihat semua kategori';
 
   const u = {aku:0,dia:0,bersama:0};
   rows.filter(t=>t.jenis==='keluar').forEach(t=>{ u[t.untuk||'bersama'] += Number(t.jumlah); });
@@ -1063,8 +1080,10 @@ function renderMonitor(){
   $('#trx-list').innerHTML = rows.length
     ? rows.map(barisTrx).join('')
     : `<div class="empty">Bulan ini masih kosong.</div>`;
-  $('#trx-list').hidden = true;
-  $('#btn-trx').textContent = `Lihat daftar transaksi (${rows.length})`;
+  const trxTerbuka = !$('#trx-list').hidden;
+  $('#trx-list').hidden = !trxTerbuka;
+  $('#btn-trx').textContent = trxTerbuka
+    ? 'Tutup daftar' : `Lihat daftar transaksi (${rows.length})`;
 }
 
 function donut(top, total, svgSel='#donut', legSel='#legend'){
@@ -1159,8 +1178,9 @@ function renderOrang(){
   $('#or-semua').innerHTML = urut.length
     ? urut.map(([k,v])=>`<div class="row"><span class="nm">${k}</span><span class="vl">${rp(v)}</span></div>`).join('')
     : `<div class="empty">Belum ada pengeluaran bulan ini.</div>`;
-  $('#or-semua').hidden = true;
-  $('#or-detail').textContent = 'Lihat semua kategori';
+  const orDetailTerbuka = !$('#or-semua').hidden;
+  $('#or-semua').hidden = !orDetailTerbuka;
+  $('#or-detail').textContent = orDetailTerbuka ? 'Tutup detail' : 'Lihat semua kategori';
 
   const punya = AKUN.filter(a=>a.aktif && a.pemilik===kode);
   $('#or-akun').innerHTML = punya.length
@@ -1170,7 +1190,6 @@ function renderOrang(){
     : `<div class="empty">Tidak ada rekening atas namanya.</div>`;
 
   $('#or-saring-sendiri').textContent = `Khusus ${nama}`;
-  $('#or-trx').hidden = true;
   isiDaftarOrang(rows, kode);
 }
 
@@ -1223,6 +1242,7 @@ document.addEventListener('click', e=>{
   const b = e.target.closest('[data-orang]'); if(!b) return;
   orangDibuka = b.dataset.orang;
   cursorOrang = new Date();
+  $('#or-trx').hidden = true; $('#or-semua').hidden = true;
   renderOrang(); show('orang');
 });
 
@@ -1320,6 +1340,7 @@ $('#btn-detail').onclick = ()=>{
   $('#btn-detail').textContent = el.hidden ? 'Lihat semua kategori' : 'Tutup detail';
 };
 
+$('#form-back').onclick = ()=> kembaliDariForm();
 $('#btn-semua-akun').onclick = ()=>{ semuaAkun = !semuaAkun; isiAkun(); };
 
 /* ---------- sesuaikan saldo dengan kenyataan ---------- */
@@ -1368,7 +1389,8 @@ $('#btn-hapus').onclick = async ()=>{
   $('#btn-hapus').disabled = false;
   if(error) return err('#form-err','Gagal menghapus: '+error.message);
   editId = null;
-  await muat(); renderHome(); show('home'); toast('Catatan dihapus');
+  await muat(); renderHome();
+  kembaliDariForm(); toast('Catatan dihapus');
 };
 
 /* ---------- buka catatan untuk diubah ---------- */
@@ -1475,7 +1497,11 @@ document.addEventListener('click', e=>{
   const b = e.target.closest('[data-go]'); if(b){
     const g = b.dataset.go;
     if(g==='home'){ show('home'); renderHome(); }
-    else if(g==='monitor'){ cursor = new Date(); show('monitor'); renderMonitor(); }
+    else if(g==='monitor'){
+      cursor = new Date();
+      $('#trx-list').hidden = true; $('#kat-all').hidden = true;
+      show('monitor'); renderMonitor();
+    }
     else if(g==='kelola'){ renderKelola(); show('kelola'); }
     else bukaForm(g);
   }
