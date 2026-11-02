@@ -490,6 +490,36 @@ input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-heigh
   </div>
 </div></section>
 
+<!-- ======================= RIWAYAT SATU REKENING ======================= -->
+<section id="s-akun" class="screen"><div class="wrap">
+  <div class="topbar"><button class="back" data-go="home">← Kembali</button><h2 id="ak-judul"></h2></div>
+
+  <div class="card">
+    <div class="row"><span class="nm muted">Saldo sekarang</span>
+      <span class="vl num" style="font-size:19px" id="ak-saldo">—</span></div>
+    <div style="margin-top:14px">
+      <button class="btn ghost" id="ak-sesuaikan" style="font-size:14px;padding:11px">Cocokkan dengan kenyataan</button>
+    </div>
+  </div>
+
+  <div class="monthbar">
+    <button id="ak-prev" aria-label="Bulan sebelumnya">‹</button>
+    <span class="m" id="ak-bulan"></span>
+    <button id="ak-next" aria-label="Bulan berikutnya">›</button>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="k">Masuk</div><div class="v pos" id="ak-in">—</div></div>
+    <div class="stat"><div class="k">Keluar</div><div class="v neg" id="ak-out">—</div></div>
+  </div>
+
+  <div class="card">
+    <h3>Gerakan bulan ini</h3>
+    <p class="muted tiny" style="margin:-6px 0 13px">Angka kanan bawah adalah sisa saldo setelah gerakan itu.</p>
+    <div id="ak-daftar"></div>
+  </div>
+</div></section>
+
 <!-- ======================= HALAMAN PER ORANG ======================= -->
 <section id="s-orang" class="screen"><div class="wrap">
   <div class="topbar"><button class="back" data-go="home">← Kembali</button><h2 id="or-judul"></h2></div>
@@ -764,13 +794,16 @@ function kembaliDariForm(){
   editId = null;
   if(asalForm === 'monitor'){ show('monitor'); renderMonitor(); }
   else if(asalForm === 'orang' && orangDibuka){ show('orang'); renderOrang(); }
+  else if(asalForm === 'akun'  && akunDibuka){ show('akun'); renderAkun(); }
   else { show('home'); renderHome(); }
 }
 
 function bukaForm(jenis, t){
   const aktif = document.querySelector('.screen.on');
   const id = aktif ? aktif.id : '';
-  asalForm = id === 's-monitor' ? 'monitor' : id === 's-orang' ? 'orang' : 'home';
+  asalForm = id === 's-monitor' ? 'monitor'
+           : id === 's-orang'   ? 'orang'
+           : id === 's-akun'    ? 'akun' : 'home';
   editId = t ? t.id : null;
   form = {jenis, kategori:null, sumber:null, untuk:null, kantong:null, arah:1};
   $('#amt').value=''; $('#note').value=''; $('#tgl').value = iso(new Date());
@@ -1343,10 +1376,95 @@ $('#btn-detail').onclick = ()=>{
 $('#form-back').onclick = ()=> kembaliDariForm();
 $('#btn-semua-akun').onclick = ()=>{ semuaAkun = !semuaAkun; isiAkun(); };
 
-/* ---------- sesuaikan saldo dengan kenyataan ---------- */
-document.addEventListener('click', async e=>{
+/* ═══════ riwayat satu rekening ═══════ */
+let akunDibuka = null;
+let cursorAkun = new Date();
+
+/* Semua gerakan yang menyentuh rekening ini, urut dari paling lama,
+   lengkap dengan sisa saldo setelah tiap gerakan. */
+function gerakanAkun(id){
+  const a = AKUN.find(x=>x.id===id); if(!a) return [];
+  const kena = TRX.filter(t=>t.akun_id===id || t.tujuan_id===id)
+    .slice()
+    .sort((p,q)=> p.tanggal===q.tanggal ? p.id-q.id : (p.tanggal < q.tanggal ? -1 : 1));
+
+  let s = Number(a.saldo_awal);
+  return kena.map(t=>{
+    const j = Number(t.jumlah);
+    let delta = 0;
+    if(t.jenis==='masuk'  && t.akun_id===id)   delta =  j;
+    if(t.jenis==='keluar' && t.akun_id===id)   delta = -j;
+    if(t.jenis==='pindah'){
+      if(t.akun_id===id)   delta = -j;
+      if(t.tujuan_id===id) delta =  j;
+    }
+    s += delta;
+    return {t, delta, sisa:s};
+  });
+}
+
+function renderAkun(){
+  const id = akunDibuka; if(!id) return;
+  const a = AKUN.find(x=>x.id===id); if(!a) return;
+
+  $('#ak-judul').textContent = namaAkun(a);
+  const saldo = saldoAkun(id);
+  $('#ak-saldo').textContent = rpS(saldo);
+  $('#ak-saldo').className = 'vl num' + (saldo<0 ? ' neg' : '');
+
+  $('#ak-bulan').textContent = bulanID(cursorAkun);
+  const kini = new Date();
+  $('#ak-next').disabled = cursorAkun.getFullYear()>=kini.getFullYear()
+                        && cursorAkun.getMonth()>=kini.getMonth();
+
+  const y = cursorAkun.getFullYear(), m = cursorAkun.getMonth();
+  const bulan = gerakanAkun(id).filter(g=>{
+    const d = new Date(g.t.tanggal+'T00:00');
+    return d.getFullYear()===y && d.getMonth()===m;
+  });
+
+  const masuk  = bulan.filter(g=>g.delta>0).reduce((s,g)=>s+g.delta,0);
+  const keluar = bulan.filter(g=>g.delta<0).reduce((s,g)=>s-g.delta,0);
+  $('#ak-in').textContent  = rp(masuk);
+  $('#ak-out').textContent = rp(keluar);
+
+  $('#ak-daftar').innerHTML = bulan.length
+    ? bulan.slice().reverse().map(g=>{
+        const t = g.t;
+        let nama;
+        if(t.jenis==='masuk')       nama = t.sumber || 'Pemasukan';
+        else if(t.jenis==='keluar') nama = t.kategori || 'Pengeluaran';
+        else {
+          const lawan = t.akun_id===id ? t.tujuan_id : t.akun_id;
+          const l = AKUN.find(x=>x.id===lawan);
+          nama = (g.delta>0 ? 'Dari ' : 'Ke ') + namaAkun(l);
+        }
+        const tgl = new Date(t.tanggal+'T00:00')
+                      .toLocaleDateString('id-ID',{day:'numeric',month:'short'});
+        const ket = t.catatan ? ` · ${t.catatan}` : '';
+        return `<div class="row" data-trx="${t.id}">
+          <span class="nm">${nama}<br><span class="muted tiny">${tgl}${ket}</span></span>
+          <span class="vl" style="text-align:right">
+            <span class="${g.delta<0?'neg':'pos'}">${g.delta<0?'−':'+'}${rp(g.delta)}</span>
+            <br><span class="muted tiny" style="font-weight:400">sisa ${rpS(g.sisa)}</span>
+          </span></div>`;
+      }).join('')
+    : `<div class="empty">Tidak ada gerakan di rekening ini bulan ini.</div>`;
+}
+
+$('#ak-prev').onclick = ()=>{ cursorAkun.setMonth(cursorAkun.getMonth()-1); renderAkun(); };
+$('#ak-next').onclick = ()=>{ cursorAkun.setMonth(cursorAkun.getMonth()+1); renderAkun(); };
+
+document.addEventListener('click', e=>{
   const r = e.target.closest('[data-sesuaikan]'); if(!r) return;
-  const id = Number(r.dataset.sesuaikan);
+  akunDibuka = Number(r.dataset.sesuaikan);
+  cursorAkun = new Date();
+  renderAkun(); show('akun');
+});
+
+/* ---------- cocokkan saldo dengan kenyataan ---------- */
+$('#ak-sesuaikan').onclick = async ()=>{
+  const id = akunDibuka;
   const a  = AKUN.find(x=>x.id===id); if(!a) return;
   const kini = saldoAkun(id);
 
@@ -1377,8 +1495,8 @@ document.addEventListener('click', async e=>{
   };
   const {error} = await sb.from('transactions').insert(row);
   if(error) return toast('Gagal: '+error.message);
-  await muat(); renderHome(); toast('Saldo disesuaikan');
-});
+  await muat(); renderHome(); renderAkun(); toast('Saldo disesuaikan');
+};
 
 /* ---------- hapus catatan ---------- */
 $('#btn-hapus').onclick = async ()=>{
