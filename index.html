@@ -259,6 +259,23 @@ input[type=text],input[type=email],input[type=password],input[type=date],select,
 
 .linkish.dark{color:var(--muted);margin-top:10px;display:inline-block}
 
+/* ---------- grafik harian ---------- */
+.harian-kepala{display:flex;justify-content:flex-end;margin:-6px 0 10px;min-height:17px}
+.harian{display:flex;align-items:flex-end;gap:2px;height:104px;position:relative;
+  border-bottom:1px solid var(--line)}
+.harian .laju{position:absolute;left:0;right:0;border-top:1px dashed var(--muted);opacity:.55;pointer-events:none}
+.harian .btg{flex:1;min-width:0;background:none;border:0;padding:0;cursor:pointer;
+  height:100%;display:flex;align-items:flex-end;-webkit-tap-highlight-color:transparent}
+.harian .btg i{display:block;width:100%;border-radius:3px 3px 0 0;background:var(--jade);
+  min-height:0;transition:opacity .15s}
+.harian .btg.lewat i{background:var(--clay)}
+.harian .btg.kosong i{background:var(--track);height:2px!important}
+.harian .btg.hariini i{outline:1px solid var(--ink);outline-offset:1px}
+.harian .btg.dipilih i{opacity:.55}
+.harian-sumbu{display:flex;gap:2px;margin-top:5px}
+.harian-sumbu span{flex:1;min-width:0;text-align:center;font-size:9.5px;color:var(--muted);
+  overflow:hidden;white-space:nowrap}
+
 /* ---------- lingkaran orang ---------- */
 .orang-baris{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-top:14px}
 .orang-kartu{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
@@ -352,6 +369,13 @@ input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-heigh
     </div>
 
     <div class="orang-baris" id="orang-baris"></div>
+
+    <div class="card" id="kartu-harian">
+      <h3>Keinginan tiap hari</h3>
+      <div class="harian-kepala"><span class="muted tiny" id="harian-ket"></span></div>
+      <div class="harian" id="harian"></div>
+      <div class="harian-sumbu" id="harian-sumbu"></div>
+    </div>
 
     <div class="card">
       <h3>Rekening</h3>
@@ -736,18 +760,23 @@ function renderHome(){
     <div class="row"><span class="nm muted">Sisa bebas di ${AKUN_KANTONG}</span>
       <span class="vl ${bebas<0?'neg':'muted'}">${rpS(bebas)}</span></div>`;
 
+  const jatahOrang = lajuHarian() / 2;   // jatah harian dibagi berdua
   $('#orang-baris').innerHTML = ['aku','dia'].map(kode=>{
     const o = ORG[kode] || {};
     const nama = ORANG[kode] || '?';
     const bulat = o.foto
       ? `<span class="or-foto" style="background-image:url('${o.foto}')"></span>`
       : `<span class="or-foto">${nama.charAt(0).toUpperCase()}</span>`;
+    const hariIni = keinginanOrangHariIni(kode);
+    const warna = (jatahOrang && hariIni > jatahOrang) ? 'var(--clay)' : 'var(--muted)';
     return `<button class="orang-kartu" data-orang="${kode}">
       ${bulat}
       <span class="nm2">${nama}</span>
-      <span class="vl2">${rp(keluarOrang(kode, new Date()))}</span>
+      <span class="vl2" style="color:${warna}">${rp(hariIni)}</span>
     </button>`;
   }).join('');
+
+  renderHarian();
 
   $('#recent').innerHTML = TRX.length
     ? TRX.slice(0,6).map(barisTrx).join('')
@@ -1143,6 +1172,94 @@ function donut(top, total, svgSel='#donut', legSel='#legend'){
     + (off<0.999 ? `<div class="lg"><span class="dot" style="background:${warnaTrack()}"></span>
      <span class="muted">Kategori lain</span><span class="v muted">${Math.round((1-off)*100)}%</span></div>` : '');
 }
+
+/* ═══════ pengeluaran keinginan harian ═══════ */
+
+/* Jatah Keinginan sehari: jatah sebulan dibagi jumlah hari di bulan itu. */
+function lajuHarian(){
+  const patokan = ATUR.patokan || 0;
+  const persen  = ATUR.persen_keinginan || 0;
+  if(!patokan || !persen) return 0;
+  const d = new Date();
+  const hari = new Date(d.getFullYear(), d.getMonth()+1, 0).getDate();
+  return patokan * persen / 100 / hari;
+}
+
+/* Keinginan hari ini milik satu orang. Yang bersama dihitung separuh. */
+function keinginanOrangHariIni(kode){
+  const hariIni = iso(new Date());
+  return TRX.reduce((s,t)=>{
+    if(t.jenis!=='keluar' || t.tanggal!==hariIni) return s;
+    if(posKat(t.kategori)!=='keinginan') return s;
+    const j = Number(t.jumlah);
+    if(t.untuk === kode)      return s + j;
+    if(t.untuk === 'bersama') return s + j/2;
+    return s;
+  }, 0);
+}
+
+/* Keinginan berdua digabung, dipecah per tanggal, untuk bulan berjalan. */
+function keinginanPerHari(){
+  const d = new Date(), y = d.getFullYear(), m = d.getMonth();
+  const jumlahHari = new Date(y, m+1, 0).getDate();
+  const per = new Array(jumlahHari + 1).fill(0);
+  TRX.forEach(t=>{
+    if(t.jenis!=='keluar') return;
+    if(posKat(t.kategori)!=='keinginan') return;
+    const x = new Date(t.tanggal+'T00:00');
+    if(x.getFullYear()!==y || x.getMonth()!==m) return;
+    per[x.getDate()] += Number(t.jumlah);
+  });
+  return per;
+}
+
+let hariDipilih = null;
+
+function renderHarian(){
+  const per  = keinginanPerHari();
+  const laju = lajuHarian();
+  const d = new Date(), tglKini = d.getDate();
+  const jumlahHari = per.length - 1;
+  const puncak = Math.max(laju, ...per.slice(1)) || 1;
+
+  $('#harian').innerHTML =
+    (laju ? `<span class="laju" style="bottom:${(laju/puncak*100).toFixed(1)}%"></span>` : '') +
+    Array.from({length:jumlahHari}, (_,i)=>{
+      const tgl = i + 1, v = per[tgl];
+      const tinggi = v ? Math.max(v/puncak*100, 2) : 0;
+      const kelas = [
+        'btg',
+        v ? '' : 'kosong',
+        (laju && v > laju) ? 'lewat' : '',
+        tgl === tglKini ? 'hariini' : '',
+        tgl === hariDipilih ? 'dipilih' : ''
+      ].filter(Boolean).join(' ');
+      return `<button class="${kelas}" data-hari="${tgl}" aria-label="Tanggal ${tgl}">
+                <i style="height:${tinggi}%"></i></button>`;
+    }).join('');
+
+  $('#harian-sumbu').innerHTML = Array.from({length:jumlahHari}, (_,i)=>{
+    const tgl = i + 1;
+    const tampil = tgl === 1 || tgl === tglKini || tgl === jumlahHari || tgl % 5 === 0;
+    return `<span>${tampil ? tgl : ''}</span>`;
+  }).join('');
+
+  if(hariDipilih){
+    $('#harian-ket').textContent = `Tanggal ${hariDipilih}: ${rp(per[hariDipilih] || 0)}`;
+  } else {
+    const totalBulan = per.reduce((s,v)=>s+v,0);
+    $('#harian-ket').textContent = laju
+      ? `Jatah ${rp(laju)} sehari · bulan ini ${rp(totalBulan)}`
+      : `Bulan ini ${rp(totalBulan)}`;
+  }
+}
+
+document.addEventListener('click', e=>{
+  const b = e.target.closest('[data-hari]'); if(!b) return;
+  const tgl = Number(b.dataset.hari);
+  hariDipilih = (hariDipilih === tgl) ? null : tgl;
+  renderHarian();
+});
 
 /* ═══════ halaman per orang ═══════
    Pengeluaran dihitung dari "untuk siapa".
