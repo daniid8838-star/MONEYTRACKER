@@ -510,7 +510,10 @@ input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-heigh
   </div>
 
   <div class="card">
-    <h3>Semua transaksi bulan ini</h3>
+    <h3>Semua transaksi</h3>
+    <div class="searchbox">
+      <input id="cari-trx" type="text" placeholder="Cari catatan, kategori, nominal…" autocomplete="off">
+    </div>
     <button class="btn ghost" id="btn-trx" style="font-size:14px;padding:11px">Lihat daftar transaksi</button>
     <div id="trx-list" hidden style="margin-top:6px"></div>
   </div>
@@ -612,7 +615,7 @@ input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-heigh
 
   <div class="card">
     <h3>Pengeluaran</h3>
-    <p class="muted tiny" style="margin:-6px 0 12px">Tap nama pos di sebelah kanan untuk memindahkan kategori.</p>
+    <p class="muted tiny" style="margin:-6px 0 12px">Tap nama pos untuk memindahkan kategori. Tap <b>Tagihan</b> atau <b>Harian</b> untuk menandai mana yang dibayar sekaligus tiap bulan — yang bertanda Tagihan tidak ikut diukur cepat-lambatnya.</p>
     <div id="kel-keluar"></div>
     <div style="margin-top:14px"><button class="btn ghost" style="font-size:14px;padding:11px"
       data-tambah-kat="keluar">+ Tambah kategori</button></div>
@@ -795,7 +798,9 @@ function barisTrx(t){
   } else {
     nama = (t.arah===-1?'Tarik dari ':'Sisihkan ke ') + t.kantong;
   }
-  const tgl = new Date(t.tanggal+'T00:00').toLocaleDateString('id-ID',{day:'numeric',month:'short'});
+  const tgl = new Date(t.tanggal+'T00:00').toLocaleDateString('id-ID',
+                arguments[1] ? {day:'numeric',month:'short',year:'numeric'}
+                             : {day:'numeric',month:'short'});
   const ket = t.catatan ? ` · ${t.catatan}` : '';
   return `<div class="row" data-trx="${t.id}"><span class="nm">${nama}<br><span class="muted tiny">${tgl}${ket}</span></span>
           <span class="vl ${cls}">${tanda}${rp(j)}</span></div>`;
@@ -939,6 +944,9 @@ async function tambahKategori(jenis){
 }
 
 /* ---------- jatah per pos ---------- */
+const kategoriTetap = nama =>
+  !!(KAT.find(k=>k.jenis==='keluar' && k.nama===nama) || {}).tetap;
+
 function hitungJatah(pos){
   const patokan = ATUR.patokan || 0;
   const persen  = ATUR['persen_'+pos] || 0;
@@ -951,10 +959,18 @@ function hitungJatah(pos){
     return d.getFullYear()===kini.getFullYear() && d.getMonth()===kini.getMonth()
            && posKat(t.kategori)===pos;
   });
-  const terpakai = rows.reduce((s,t)=>s+Number(t.jumlah),0);
+
+  // Tagihan tetap dibayar sekaligus, jadi tidak ikut diukur kecepatannya.
+  // Sisa jatah setelah tagihan itulah yang dibandingkan dengan jalannya tanggal.
+  const tetap   = rows.filter(t=> kategoriTetap(t.kategori))
+                      .reduce((s,t)=>s+Number(t.jumlah),0);
+  const mengalir= rows.filter(t=>!kategoriTetap(t.kategori))
+                      .reduce((s,t)=>s+Number(t.jumlah),0);
 
   const hariTotal = new Date(kini.getFullYear(), kini.getMonth()+1, 0).getDate();
-  return { jatah, terpakai, lajuBulan: kini.getDate()/hariTotal };
+  return { jatah, tetap, mengalir, terpakai: tetap + mengalir,
+           sisaUntukHarian: jatah - tetap,
+           lajuBulan: kini.getDate()/hariTotal };
 }
 
 function tampilkanJatah(){
@@ -962,34 +978,55 @@ function tampilkanJatah(){
   const pos = form.kategori ? posKat(form.kategori) : null;
   if(!pos || !(ATUR.patokan > 0)){ box.hidden = true; return; }
 
-  const {jatah, terpakai, lajuBulan} = hitungJatah(pos);
+  const {jatah, tetap, mengalir, sisaUntukHarian, lajuBulan} = hitungJatah(pos);
   if(!jatah){ box.hidden = true; return; }
 
+  const iniTetap = kategoriTetap(form.kategori);
   const sedangDiisi = nilai() || 0;
-  const total = terpakai + sedangDiisi;
-  const laju  = total / jatah;
 
-  // Waspada kalau belanjanya lari lebih cepat 15% dari jalannya tanggal
-  const lewat   = laju >= 1;
-  const waspada = !lewat && laju > lajuBulan + 0.15;
+  let laju, lewat, waspada, ket, kiri, kanan;
 
-  let ket;
-  if(lewat){
-    ket = `Jatah ${LABEL_POS[pos].toLowerCase()} bulan ini sudah lewat ${rp(total - jatah)}.`;
-  } else if(waspada){
-    ket = `Bulan baru jalan ${Math.round(lajuBulan*100)}%, tapi jatah ${LABEL_POS[pos].toLowerCase()} sudah terpakai ${Math.round(laju*100)}%. Agak cepat.`;
+  if(iniTetap){
+    // Tagihan tetap: cukup tunjukkan posisinya, tanpa menilai cepat atau lambat.
+    const totalTetap = tetap + sedangDiisi;
+    const semua = totalTetap + mengalir;
+    laju    = jatah ? semua / jatah : 0;
+    lewat   = semua > jatah;
+    waspada = false;
+    kiri  = `${LABEL_POS[pos]} · tagihan tetap`;
+    kanan = `${rp(totalTetap)} <span class="muted">dari ${rp(jatah)}</span>`;
+    ket = lewat
+      ? `Tagihan tetap plus belanja harian sudah melewati jatah ${rp(semua - jatah)}.`
+      : `Setelah tagihan ini, tersisa ${rp(jatah - semua)} untuk belanja harian sampai akhir bulan.`;
   } else {
-    ket = `Bulan baru jalan ${Math.round(lajuBulan*100)}%. Masih aman.`;
+    // Belanja harian: inilah yang diukur kecepatannya.
+    const total = mengalir + sedangDiisi;
+    laju    = sisaUntukHarian > 0 ? total / sisaUntukHarian : 1;
+    lewat   = sisaUntukHarian <= 0 || total >= sisaUntukHarian;
+    waspada = !lewat && laju > lajuBulan + 0.15;
+    kiri  = `${LABEL_POS[pos]} · belanja harian`;
+    kanan = `${rp(total)} <span class="muted">dari ${rp(Math.max(sisaUntukHarian,0))}</span>`;
+
+    if(sisaUntukHarian <= 0){
+      ket = `Tagihan tetap ${rp(tetap)} sudah memakan seluruh jatah ${LABEL_POS[pos].toLowerCase()} bulan ini.`;
+    } else if(lewat){
+      ket = `Sisa jatah untuk belanja harian sudah lewat ${rp(total - sisaUntukHarian)}.`;
+    } else if(waspada){
+      ket = `Bulan baru jalan ${Math.round(lajuBulan*100)}%, tapi sisa jatah harian sudah terpakai ${Math.round(laju*100)}%. Agak cepat.`;
+    } else {
+      ket = `Bulan baru jalan ${Math.round(lajuBulan*100)}%. Masih aman.`;
+    }
+    if(tetap) ket += ` Tagihan tetap bulan ini ${rp(tetap)}.`;
   }
 
   box.className = 'jatah' + (lewat ? ' lewat' : waspada ? ' waspada' : '');
   box.innerHTML = `
     <div class="j-atas">
-      <span class="j-nama">${LABEL_POS[pos]}</span>
-      <span>${rp(total)} <span class="muted">dari ${rp(jatah)}</span></span>
+      <span class="j-nama">${kiri}</span>
+      <span>${kanan}</span>
     </div>
-    <div class="bar"><i style="width:${Math.min(laju,1)*100}%"></i>
-      <u style="left:${Math.min(lajuBulan,1)*100}%"></u></div>
+    <div class="bar"><i style="width:${Math.min(Math.max(laju,0),1)*100}%"></i>
+      ${iniTetap ? '' : `<u style="left:${Math.min(lajuBulan,1)*100}%"></u>`}</div>
     <div class="j-ket">${ket}</div>`;
   box.hidden = false;
 }
@@ -1039,6 +1076,21 @@ $('#btn-save').onclick = async ()=>{
     akun_id:   form.jenis==='alokasi' ? null : Number($('#sel-akun').value),
     tujuan_id: form.jenis==='pindah'  ? Number($('#sel-tujuan').value) : null
   };
+
+  // Dipakai berdua, jadi catatan yang sama bisa masuk dua kali tanpa sadar
+  if(!editId){
+    const kembar = TRX.find(t=>
+      t.jenis === row.jenis &&
+      t.tanggal === row.tanggal &&
+      Number(t.jumlah) === j &&
+      (t.kategori || t.sumber || '') === (row.kategori || row.sumber || '')
+    );
+    if(kembar){
+      const label = row.kategori || row.sumber || 'catatan';
+      const ket = kembar.catatan ? `\nCatatannya: "${kembar.catatan}"` : '';
+      if(!confirm(`Sudah ada ${label} ${rp(j)} di tanggal yang sama.${ket}\n\nTetap simpan sebagai catatan terpisah?`)) return;
+    }
+  }
 
   $('#btn-save').disabled = true; $('#btn-save').textContent = 'Menyimpan…';
   const {error} = editId
@@ -1144,10 +1196,7 @@ function renderMonitor(){
   $('#trx-list').innerHTML = rows.length
     ? rows.map(barisTrx).join('')
     : `<div class="empty">Bulan ini masih kosong.</div>`;
-  const trxTerbuka = !$('#trx-list').hidden;
-  $('#trx-list').hidden = !trxTerbuka;
-  $('#btn-trx').textContent = trxTerbuka
-    ? 'Tutup daftar' : `Lihat daftar transaksi (${rows.length})`;
+  isiDaftarTrx(rows);
 }
 
 function donut(top, total, svgSel='#donut', legSel='#legend'){
@@ -1495,10 +1544,61 @@ if(window.matchMedia){
 
 $('#m-prev').onclick = ()=>{ cursor.setMonth(cursor.getMonth()-1); renderMonitor(); };
 $('#m-next').onclick = ()=>{ cursor.setMonth(cursor.getMonth()+1); renderMonitor(); };
+/* ---------- pencarian transaksi ---------- */
+const BATAS_CARI = 80;
+
+/* Cocok kalau kata kunci ada di catatan, kategori, sumber, nama rekening,
+   atau kalau yang diketik berupa angka, di nominalnya. */
+function cocokCari(t, q){
+  const angka = q.replace(/\D/g,'');
+  if(angka && String(Math.round(Number(t.jumlah))).includes(angka)) return true;
+  const teks = [
+    t.catatan, t.kategori, t.sumber, t.kantong,
+    namaAkun(AKUN.find(x=>x.id===t.akun_id)),
+    t.tujuan_id ? namaAkun(AKUN.find(x=>x.id===t.tujuan_id)) : ''
+  ].filter(Boolean).join(' ').toLowerCase();
+  return teks.includes(q);
+}
+
+function isiDaftarTrx(rowsBulan){
+  const q = ($('#cari-trx').value || '').trim().toLowerCase();
+  const mencari = q.length > 0;
+
+  let pakai, lebih = 0;
+  if(mencari){
+    const semua = TRX.filter(t=>cocokCari(t, q));
+    lebih = Math.max(semua.length - BATAS_CARI, 0);
+    pakai = semua.slice(0, BATAS_CARI);
+  } else {
+    pakai = rowsBulan;
+  }
+
+  const jml = pakai.filter(t=>t.jenis==='keluar').reduce((s,t)=>s+Number(t.jumlah),0);
+  $('#trx-list').innerHTML = pakai.length
+    ? pakai.map(t=>barisTrx(t, mencari)).join('')
+      + (lebih ? `<div class="empty">Masih ada ${lebih} lagi. Persempit pencariannya.</div>` : '')
+    : `<div class="empty">${mencari ? 'Tidak ada yang cocok.' : 'Bulan ini masih kosong.'}</div>`;
+
+  if(mencari) $('#trx-list').hidden = false;
+  const terbuka = !$('#trx-list').hidden;
+
+  $('#btn-trx').textContent = !terbuka
+    ? `Lihat daftar transaksi (${pakai.length})`
+    : mencari
+      ? `${pakai.length} hasil dari semua bulan${jml ? ' · keluar ' + rp(jml) : ''}`
+      : 'Tutup daftar';
+  $('#btn-trx').disabled = mencari;
+}
+
+let jedaCari;
+$('#cari-trx').addEventListener('input', ()=>{
+  clearTimeout(jedaCari);
+  jedaCari = setTimeout(()=> isiDaftarTrx(bulanTrx()), 180);
+});
+
 $('#btn-trx').onclick = ()=>{
   const el = $('#trx-list'); el.hidden = !el.hidden;
-  const n = bulanTrx().length;
-  $('#btn-trx').textContent = el.hidden ? `Lihat daftar transaksi (${n})` : 'Tutup daftar';
+  isiDaftarTrx(bulanTrx());
 };
 $('#btn-detail').onclick = ()=>{
   const el = $('#kat-all'); el.hidden = !el.hidden;
@@ -1667,8 +1767,13 @@ function renderKelola(){
         ? `<button data-pos-id="${k.id}" data-pos-kini="${k.pos||''}">${
              k.pos ? LABEL_POS[k.pos] : 'Tidak dihitung'}</button>`
         : '';
+      const tetap = (j==='keluar' && k.pos)
+        ? `<button data-tetap-id="${k.id}" data-tetap-kini="${k.tetap?'1':'0'}">${
+             k.tetap ? 'Tagihan' : 'Harian'}</button>`
+        : '';
       return `<div class="kelola-row ${k.aktif?'':'off'}">
         <span class="nm">${k.nama}</span>
+        ${tetap}
         ${pos}
         <button data-kat-id="${k.id}" data-kat-aktif="${k.aktif?'1':'0'}">
           ${k.aktif?'Sembunyikan':'Tampilkan'}</button>
@@ -1716,6 +1821,16 @@ document.addEventListener('click', async e=>{
     return;
   }
 
+  const tt = e.target.closest('[data-tetap-id]');
+  if(tt){
+    const jadi = tt.dataset.tetapKini !== '1';
+    tt.disabled = true;
+    const {error} = await sb.from('categories').update({tetap:jadi}).eq('id', Number(tt.dataset.tetapId));
+    if(error){ tt.disabled=false; return toast('Gagal: '+error.message); }
+    await muat(); renderKelola();
+    return;
+  }
+
   const p = e.target.closest('[data-pos-id]');
   if(p){
     const urut = ['kebutuhan','keinginan',''];
@@ -1750,6 +1865,7 @@ document.addEventListener('click', e=>{
     else if(g==='monitor'){
       cursor = new Date();
       $('#trx-list').hidden = true; $('#kat-all').hidden = true;
+      $('#cari-trx').value = ''; $('#btn-trx').disabled = false;
       show('monitor'); renderMonitor();
     }
     else if(g==='kelola'){ renderKelola(); show('kelola'); }
