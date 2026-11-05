@@ -370,8 +370,10 @@ input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-heigh
 
     <div class="orang-baris" id="orang-baris"></div>
 
-    <div class="card" id="kartu-harian">
-      <h3>Keinginan tiap hari</h3>
+    <div style="margin-top:14px">
+      <button class="btn ghost" id="btn-harian" style="font-size:14px;padding:12px"></button>
+    </div>
+    <div class="card" id="kartu-harian" hidden>
       <div class="harian-kepala"><span class="muted tiny" id="harian-ket"></span></div>
       <div class="harian" id="harian"></div>
       <div class="harian-sumbu" id="harian-sumbu"></div>
@@ -1218,6 +1220,13 @@ let hariDipilih = null;
 function renderHarian(){
   const per  = keinginanPerHari();
   const laju = lajuHarian();
+  const totalBulan = per.reduce((s,v)=>s+v,0);
+
+  $('#btn-harian').textContent = $('#kartu-harian').hidden
+    ? 'Klik untuk lihat pengeluaran keinginan tiap hari'
+    : 'Tutup grafik';
+  if($('#kartu-harian').hidden) return;   // tidak perlu digambar kalau tertutup
+
   const d = new Date(), tglKini = d.getDate();
   const jumlahHari = per.length - 1;
   const puncak = Math.max(laju, ...per.slice(1)) || 1;
@@ -1247,12 +1256,18 @@ function renderHarian(){
   if(hariDipilih){
     $('#harian-ket').textContent = `Tanggal ${hariDipilih}: ${rp(per[hariDipilih] || 0)}`;
   } else {
-    const totalBulan = per.reduce((s,v)=>s+v,0);
     $('#harian-ket').textContent = laju
       ? `Jatah ${rp(laju)} sehari · bulan ini ${rp(totalBulan)}`
       : `Bulan ini ${rp(totalBulan)}`;
   }
 }
+
+$('#btn-harian').onclick = ()=>{
+  const el = $('#kartu-harian');
+  el.hidden = !el.hidden;
+  if(el.hidden) hariDipilih = null;
+  renderHarian();
+};
 
 document.addEventListener('click', e=>{
   const b = e.target.closest('[data-hari]'); if(!b) return;
